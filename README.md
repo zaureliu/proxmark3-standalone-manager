@@ -68,9 +68,13 @@ Compiling without flashing is a normal, supported action.
   the user's computer. That executable is not part of this repository and
   does not embed the firmware.
 - Reports Iceman and ProxSpace updates from the official GitHub API. The
-  report is informational. The application does not pull, compile, or flash
-  because a newer release or commit exists. See
-  [Update monitor](docs/updates.md).
+  **Atualizações** panel stays compact. **Ver detalhes** opens the full
+  fields in a separate dialog. The report is informational. The application
+  does not pull, compile, or flash because a newer release or commit exists.
+  See [Update monitor](docs/updates.md).
+- Keeps **Aplicar módulo**, **Recompilar**, **Verificar dispositivo**,
+  **Abrir cliente Proxmark3**, and **Visualizar logs** outside any scroll
+  area. The module description scrolls on its own.
 
 ## System requirements
 

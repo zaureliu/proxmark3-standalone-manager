@@ -7,6 +7,22 @@ newer release exists.
 The window stays in Brazilian Portuguese. This document is the English
 description of that behavior.
 
+## What stays on screen
+
+The **Atualizações** panel is compact. It shows the notice, the Iceman and
+ProxSpace summaries, **Verificar atualizações**, and **Ver detalhes**.
+**Ver detalhes** opens a separate dialog. That dialog holds the version,
+commit, release, state, time, and official link for each project, plus
+**Ver alterações**, **Abrir no GitHub**, **Configurações**, and **Ver
+instruções de atualização**. Resizing the window does not start a GitHub
+check.
+
+**Aplicar módulo**, **Recompilar**, **Verificar dispositivo**, **Abrir
+cliente Proxmark3**, and **Visualizar logs** stay outside any scroll area.
+Scrolling the module description, the device text, or the progress log does
+not move those buttons off the window. Only the progress log scrolls inside
+the progress panel.
+
 ## What is checked
 
 | Panel | Repository | API |
@@ -21,7 +37,7 @@ not stored and is not written to the log.
 On startup the window paints the last saved result, then asks GitHub from a
 worker thread. The same check repeats while the window is open. The default
 interval is **60 minutes**. The allowed range is 15 to 1440 minutes.
-**Configurações** in the **Atualizações** panel can turn the automatic check
+**Configurações**, inside the details dialog, can turn the automatic check
 off, change the interval, or turn the visual notice off. **Verificar
 atualizações** runs one check immediately. Nothing in that panel runs `git
 pull`, `git fetch`, `git checkout`, `git reset`, a ProxSpace reinstall, an
@@ -119,10 +135,10 @@ file is loaded.
 
 ## Baseline tag
 
-There is no `v1.0.0` tag in this repository yet. The published V1 source is
-`main` at `0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`. A tag can be created
-later, on that commit, after a separate decision. This branch does not
-create or push tags.
+The annotated tag `v1.0.0` identifies the published V1 source,
+`0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`. Version 2.0.0 is the source on
+`main` after that commit. A version tag identifies that source and does not
+publish an executable.
 
 ## Network and hardware
 

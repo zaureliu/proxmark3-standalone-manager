@@ -2,12 +2,12 @@
 
 The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.0.0.
 Dates below are the dates the work was prepared, not publication dates.
-Version 2.0.0 is on `feature/update-monitor-v2` and is not published.
-There is still no `v1.0.0` tag. The published V1 commit on `main` is
-`0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`. A later decision can tag that
-commit. This branch does not create the tag.
+Version 2.0.0 is the source published on `main`. The binary package stays
+`PUBLICATION: BLOCKED`.
+The annotated tag `v1.0.0` identifies the published V1 commit
+`0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`.
 
-## 2.0.0 — prepared, not published
+## 2.0.0 — source published
 
 ### Fixed
 
