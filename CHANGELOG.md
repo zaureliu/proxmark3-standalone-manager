@@ -6,6 +6,11 @@ the dates the work was prepared, not publication dates.
 
 ## Unreleased
 
+### Fixed
+
+- `.gitignore` no longer ignores `pm3manager/build`. That package is the
+  compiler used by the application, and without it the CI import fails.
+
 ### Changed
 
 - The public tree is source code only. It documents how to install Python,

@@ -9,9 +9,11 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# Build outputs. The executable is rebuilt; it is not source.
-build/
-dist/
+# Build outputs at the repository root. The executable is rebuilt; it is
+# not source. The leading slash keeps pm3manager/build, which is Python
+# source, from being ignored.
+/build/
+/dist/
 
 # Qt and PySide6 corresponding-source archives kept by the distributor.
 # They are not part of the application zip and not part of this source tree.
