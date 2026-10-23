@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -44,6 +45,7 @@ from pm3manager.client.launcher import launch_client
 from pm3manager.logging_setup import environment_name, latest_log_file, setup_logging
 from pm3manager.ui.presentation import present_result
 from pm3manager.ui.theme import LOG_KIND_COLORS, STATUS_COLORS, STYLESHEET
+from pm3manager.ui.updates_panel import UpdatesPanel
 from pm3manager.ui.worker import ServiceWorker
 from pm3manager.preferences import Preferences
 from pm3manager.workflow.context import AppContext
@@ -72,7 +74,7 @@ class MainWindow(QMainWindow):
         self._clock.timeout.connect(self._tick)
         self.setWindowTitle("Proxmark3 Standalone Manager")
         self.resize(1240, 820)
-        self.setMinimumSize(980, 680)
+        self.setMinimumSize(980, 720)
         self._build()
         self._apply_recovery_note()
         self._refresh_modules()
@@ -117,6 +119,13 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 4)
         splitter.setStretchFactor(2, 3)
         root.addWidget(splitter, 1)
+        self.updates_panel = UpdatesPanel(self.context, self)
+        updates_scroll = QScrollArea()
+        updates_scroll.setWidgetResizable(True)
+        updates_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        updates_scroll.setMaximumHeight(250)
+        updates_scroll.setWidget(self.updates_panel)
+        root.addWidget(updates_scroll)
         root.addWidget(self._progress_card())
 
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
@@ -628,6 +637,8 @@ class MainWindow(QMainWindow):
         self._refresh_config_text()
         self._refresh_firmware_label()
         self.summary_label.setText(f"ProxSpace em uso: {fresh.env.proxspace_root}")
+        if hasattr(self, "updates_panel"):
+            self.updates_panel.rebind(fresh)
 
     def _spi_toggled(self, checked: bool) -> None:
         self.context.prefs.spi_flash_confirmada = checked
@@ -869,6 +880,8 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        if hasattr(self, "updates_panel"):
+            self.updates_panel.shutdown()
         event.accept()
 
 

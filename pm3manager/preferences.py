@@ -12,6 +12,24 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from pm3manager.paths import data_dir
+from pm3manager.updates.models import clamp_interval
+
+
+def _stored_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "sim"}:
+            return True
+        if lowered in {"0", "false", "no", "nao", "não"}:
+            return False
+        return default
+    if isinstance(value, bool):
+        return value
+    if value == 1:
+        return True
+    if value == 0:
+        return False
+    return default
 
 
 def _stored_flash_enabled(value: object) -> bool:
@@ -39,6 +57,9 @@ class Preferences:
     detected_standalone: str = ""
     detected_smartcard: str = ""
     detected_bt_addon: str = ""
+    updates_enabled: bool = True
+    updates_interval_minutes: int = 60
+    updates_notify: bool = True
 
     @staticmethod
     def path() -> Path:
@@ -63,6 +84,9 @@ class Preferences:
         prefs.spi_flash_confirmada = bool(prefs.spi_flash_confirmada)
         prefs.spi_flash_recusada = bool(prefs.spi_flash_recusada)
         prefs.platform_size_256 = bool(prefs.platform_size_256)
+        prefs.updates_enabled = _stored_bool(raw.get("updates_enabled", True), default=True)
+        prefs.updates_notify = _stored_bool(raw.get("updates_notify", True), default=True)
+        prefs.updates_interval_minutes = clamp_interval(raw.get("updates_interval_minutes", prefs.updates_interval_minutes))
         for name in (
             "detected_mcu",
             "detected_external_flash",

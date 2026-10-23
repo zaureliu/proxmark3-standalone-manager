@@ -129,12 +129,15 @@ def test_licenca_mit_nomeia_o_titular_e_nao_relicencia_terceiros():
 
 
 def test_codigo_original_nao_traz_cabecalho_de_firmware():
+    """O monitor cita o dono oficial do repositório. Isso não é o cabeçalho do firmware."""
     root = project_root() / "pm3manager"
-    needles = ("RfidResearchGroup", "SPDX-License-Identifier", "GNU General Public License")
+    needles = ("SPDX-License-Identifier", "GNU General Public License")
     for path in root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for needle in needles:
             assert needle not in text, f"{needle} in {path.name}"
+        if "updates" not in path.parts:
+            assert "RfidResearchGroup" not in text, path.name
 
 
 def test_documentacao_publica_nao_tem_caminho_de_usuario():
