@@ -1,6 +1,17 @@
 # Changelog
 
 The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.0.0.
+Maintenance after the published 2.0.0 source does not move the `v1.0.0` or
+`v2.0.0` tags and does not create a release.
+
+## Maintenance after 2.0.0
+
+- GitHub Actions uses `actions/checkout@v7` and `actions/setup-python@v7`.
+  Both run on Node.js 24. The job still tests Python 3.11, and its token
+  can only read repository contents.
+- The Windows installation guide names the public repository and the
+  commands used to clone it, create a virtual environment, and start
+  `pm3manager`. ProxSpace and Iceman remain separate installs.
 Dates below are the dates the work was prepared, not publication dates.
 Version 2.0.0 is the source published on `main`. The binary package stays
 `PUBLICATION: BLOCKED`.

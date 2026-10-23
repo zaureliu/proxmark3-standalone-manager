@@ -45,10 +45,10 @@ broken. **Compatibilidade da atualização não verificada.** means a release
 was seen and was not tested against this board.
 
 The monitor never flashes and never runs `git pull`. A repeated notice for
-the same release is not shown again. Disable the schedule under
-**Configurações** in **Atualizações**. The interval is stored as
-`updates_interval_minutes` in the preferences file. Details are in
-`docs/updates.md`.
+the same release is not shown again. **Ver detalhes** opens the dialog that
+contains **Configurações**. That is where the schedule can be turned off.
+The interval is stored as `updates_interval_minutes` in the preferences
+file. Details are in `docs/updates.md`.
 
 ## Bootloader button
 
