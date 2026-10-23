@@ -13,6 +13,9 @@ Dates below are the dates the work was prepared, not publication dates.
   the gitignored `var` directory, which Git does not create. The test
   configuration creates that parent before pytest does, and `var` stays
   out of the published tree.
+- Log-isolation tests no longer require the local file `var/logs/app.log`.
+  A clean checkout does not contain it. The tests still fail if a run
+  creates or changes that file.
 
 ### Changed
 

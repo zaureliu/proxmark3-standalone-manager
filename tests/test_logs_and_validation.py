@@ -30,6 +30,13 @@ ARCHIVE_NAME = "app-historico-anterior-a-correcao-20261023.log"
 OPERATIONAL = project_root() / "var" / "logs" / "app.log"
 
 
+def _operational_bytes() -> bytes | None:
+    """O log operacional é local e não entra no Git."""
+    if not OPERATIONAL.is_file():
+        return None
+    return OPERATIONAL.read_bytes()
+
+
 def _custom(tmp_path, shell, detect):
     return ManagerService(
         make_env(tmp_path),
@@ -63,10 +70,14 @@ def test_historico_anterior_foi_preservado_fora_do_log_ativo():
 
 
 def test_handler_preso_nao_grava_no_log_operacional(tmp_path):
-    before = OPERATIONAL.read_bytes()
+    before = _operational_bytes()
     logger = logging.getLogger("pm3manager")
-    rogue = logging.FileHandler(OPERATIONAL, encoding="utf-8")
-    logger.addHandler(rogue)
+    # FileHandler cria o arquivo ausente. Em um checkout limpo isso
+    # produziria var/logs, que não faz parte do código publicado.
+    rogue = None
+    if before is not None:
+        rogue = logging.FileHandler(OPERATIONAL, encoding="utf-8")
+        logger.addHandler(rogue)
     try:
         log(
             logging.ERROR,
@@ -80,10 +91,11 @@ def test_handler_preso_nao_grava_no_log_operacional(tmp_path):
             result="error",
         )
     finally:
-        if rogue in logger.handlers:
+        if rogue is not None and rogue in logger.handlers:
             logger.removeHandler(rogue)
-        rogue.close()
-    assert OPERATIONAL.read_bytes() == before
+        if rogue is not None:
+            rogue.close()
+    assert _operational_bytes() == before
     text = (tmp_path / "logs" / "app.log").read_text(encoding="utf-8")
     assert "code=E200" in text
     assert "falha simulada" in text
@@ -93,15 +105,15 @@ def test_handler_preso_nao_grava_no_log_operacional(tmp_path):
 
 
 def test_diretorio_operacional_explicito_e_recusado(monkeypatch):
-    before = OPERATIONAL.read_bytes()
+    before = _operational_bytes()
     monkeypatch.setenv("PM3MANAGER_LOG_DIR", str(operational_log_dir()))
     with pytest.raises(LogIsolationError):
         setup_logging()
-    assert OPERATIONAL.read_bytes() == before
+    assert _operational_bytes() == before
 
 
 def test_sem_diretorio_explicito_nao_cai_no_log_operacional(monkeypatch):
-    before = OPERATIONAL.read_bytes()
+    before = _operational_bytes()
     monkeypatch.delenv("PM3MANAGER_LOG_DIR", raising=False)
     log(
         logging.ERROR,
@@ -114,7 +126,7 @@ def test_sem_diretorio_explicito_nao_cai_no_log_operacional(monkeypatch):
         stage="Validando artefatos",
         result="error",
     )
-    assert OPERATIONAL.read_bytes() == before
+    assert _operational_bytes() == before
     written = latest_log_file().resolve()
     assert written != OPERATIONAL.resolve()
     assert operational_log_dir() not in written.parents
@@ -125,7 +137,7 @@ def test_sem_diretorio_explicito_nao_cai_no_log_operacional(monkeypatch):
 
 
 def test_falhas_simuladas_ficam_so_no_log_de_teste(isolated_data, tmp_path):
-    before = OPERATIONAL.read_bytes()
+    before = _operational_bytes()
     scenarios = []
 
     shell = FakeShell(make_env(tmp_path).repo_root)
@@ -173,8 +185,10 @@ def test_falhas_simuladas_ficam_so_no_log_de_teste(isolated_data, tmp_path):
         assert any(event["code"] == code and event["environment"] == "teste" for event in recorded)
     assert "ERROR" in text
     assert "WARNING" in text
-    assert OPERATIONAL.read_bytes() == before
-    assert "falha simulada" not in OPERATIONAL.read_text(encoding="utf-8")
+    after = _operational_bytes()
+    assert after == before
+    if after is not None:
+        assert "falha simulada" not in after.decode("utf-8", errors="replace")
 
 
 def test_erro_real_nao_e_ocultado(isolated_data, tmp_path, monkeypatch):
