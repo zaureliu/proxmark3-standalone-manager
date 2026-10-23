@@ -696,9 +696,13 @@ def test_consulta_simultanea_cancelamento_e_notificacao_sem_repetir(tmp_path):
 
     service = UpdateService(ScriptedClient(blocking), UpdateCache(tmp_path / "updates"))
     holder = {}
+    finished = threading.Event()
 
     def run() -> None:
-        holder["first"] = service.check(local_at(), local_at(version="v3"))
+        try:
+            holder["first"] = service.check(local_at(), local_at(version="v3"))
+        finally:
+            finished.set()
 
     worker = threading.Thread(target=run)
     worker.start()
@@ -707,7 +711,9 @@ def test_consulta_simultanea_cancelamento_e_notificacao_sem_repetir(tmp_path):
     assert second.busy is True
     assert len(calls) == 1
     release.set()
-    worker.join(5)
+    # join() com tempo no Python 3.11 do Windows pode falhar com violação de
+    # acesso quando a thread termina no mesmo instante. O evento cobre o fim.
+    assert finished.wait(5)
     assert holder["first"].busy is False
     assert service.running is False
 
