@@ -46,6 +46,15 @@ version" notice.
 The firmware string read from the Proxmark3 is not the version of the
 checkout on disk. The monitor shows the checkout.
 
+**Commit local** is `git rev-parse HEAD` for the selected checkout. It is
+not the third quoted field of `common/default_version_pm3.c`. Iceman's
+`tools/mkversion.sh` writes that field as the first nine hex digits of a
+SHA-256 over the firmware sources. On the validated tree the file contains
+`9ce8a4b6c`, while HEAD is the release commit tagged `v4.23346`. That
+fingerprint is not a Git object in the shallow checkout, and the panel does
+not display it in **Commit local**. The observation line labels it as the
+version-file identifier.
+
 ## Archived ProxSpace
 
 The ProxSpace repository was archived in September 2026. The monitor shows

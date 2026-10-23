@@ -32,6 +32,11 @@ def inspect_iceman(env: Environment | None, runner=None) -> LocalInstall:
     notes = list(install.notes)
     if platform or standalone:
         notes.append(_platform_note(platform, standalone, extras))
+    fingerprint = (env.commit or "").strip()
+    if fingerprint:
+        notes.append(
+            f"Identificador no arquivo de versão: {fingerprint}. Não é o Git HEAD."
+        )
     return LocalInstall(
         present=True,
         kind=install.kind or "checkout",

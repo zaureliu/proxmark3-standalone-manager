@@ -277,6 +277,11 @@ class UpdatesPanel(QFrame):
         state.setText(report.message or "—")
         when.setText(report.checked_at or "—")
         notes = list(report.local.notes)
+        fingerprint = (report.local.firmware_commit or "").strip()
+        if fingerprint and not any("Não é o Git HEAD" in note for note in notes):
+            notes.append(
+                f"Identificador no arquivo de versão: {fingerprint}. Não é o Git HEAD."
+            )
         if report.archived:
             notes.append("Repositório ProxSpace arquivado." if report.key == "proxspace" else "Repositório arquivado.")
         if report.compatibility:
@@ -288,13 +293,9 @@ class UpdatesPanel(QFrame):
 
     def _commit_text(self, report: ProviderReport) -> str:
         local = report.local
-        if not local.commit and not local.firmware_commit:
+        if not local.commit:
             return "—"
-        parts = []
-        if local.commit_short:
-            parts.append(local.commit_short)
-        elif local.firmware_commit:
-            parts.append(local.firmware_commit[:12])
+        parts = [local.commit_short]
         if local.detached:
             parts.append("HEAD desanexado")
         elif local.branch:

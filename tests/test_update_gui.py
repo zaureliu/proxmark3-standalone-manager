@@ -152,6 +152,59 @@ def test_painel_mostra_os_dois_lados_e_dispensa_sem_apagar(qapp, isolated_data):
         panel.shutdown()
 
 
+def test_commit_local_nao_mostra_o_identificador_do_arquivo_de_versao(qapp, isolated_data):
+    head = "dc0110c29d320e04b37ea436ee2924901407ae72"
+    local = LocalInstall(
+        present=True,
+        version_label="Iceman/master/v4.23346",
+        commit=head,
+        tag="v4.23346",
+        detached=True,
+        firmware_commit="9ce8a4b6c",
+        notes=("Identificador no arquivo de versão: 9ce8a4b6c. Não é o Git HEAD.",),
+    )
+    panel = _panel(isolated_data)
+    panel.show()
+    try:
+        panel._show(_report(iceman=_provider(
+            "iceman",
+            ICEMAN.web,
+            local=local,
+            remote=_remote(),
+            relation=Relation.NEW_COMMITS,
+            message="Novos commits disponíveis.",
+            announce=False,
+            announce_text="",
+            notification_id="",
+        )))
+        assert panel.iceman_commit.text().startswith(head[:12])
+        assert "9ce8a4b6c" not in panel.iceman_commit.text()
+        assert "HEAD desanexado" in panel.iceman_commit.text()
+        assert "9ce8a4b6c" in panel.iceman_extra.text()
+        assert "Não é o Git HEAD" in panel.iceman_extra.text()
+        missing = LocalInstall(
+            present=True,
+            version_label="Iceman/master/v4.23346",
+            firmware_commit="9ce8a4b6c",
+        )
+        panel._show(_report(iceman=_provider(
+            "iceman",
+            ICEMAN.web,
+            local=missing,
+            remote=_remote(),
+            relation=Relation.LOCAL_UNKNOWN,
+            message="Versão local não identificada.",
+            announce=False,
+            announce_text="",
+            notification_id="",
+        )))
+        assert panel.iceman_commit.text() == "—"
+        assert "9ce8a4b6c" not in panel.iceman_commit.text()
+        assert "Não é o Git HEAD" in panel.iceman_extra.text()
+    finally:
+        panel.shutdown()
+
+
 def test_botoes_de_alteracoes_instrucoes_github_e_configuracao(qapp, isolated_data, monkeypatch):
     prefs = Preferences()
     prefs.updates_enabled = True
@@ -375,6 +428,56 @@ def test_inicio_real_agenda_a_consulta_sem_esperar_o_intervalo(qapp, isolated_da
         assert panel._timer.interval() == 60 * 60 * 1000
     finally:
         panel.shutdown()
+
+
+def test_qtimer_respeita_o_intervalo_e_nao_sobrepoe_a_consulta(qapp, isolated_data):
+    """O intervalo de produção permanece em minutos. Só o QTimer deste teste é acelerado."""
+    from pm3manager.updates.models import clamp_interval
+
+    assert clamp_interval(1) == 15
+    prefs = Preferences()
+    prefs.updates_interval_minutes = 15
+    panel = _panel(isolated_data, prefs)
+    release = threading.Event()
+    started: list[float] = []
+
+    def slow() -> MonitorReport:
+        started.append(time.monotonic())
+        release.wait(2)
+        return _report(iceman=_provider(
+            "iceman",
+            ICEMAN.web,
+            remote=_remote(),
+            announce=False,
+            announce_text="",
+            notification_id="",
+        ))
+
+    panel._run_check = slow
+    try:
+        panel.apply_schedule()
+        assert panel._timer.isActive() is True
+        assert panel._timer.interval() == 15 * 60 * 1000
+        panel._timer.setInterval(80)
+        panel.check_now()
+        deadline = time.monotonic() + 2
+        while not started and time.monotonic() < deadline:
+            QTest.qWait(20)
+        QTest.qWait(300)
+        assert len(started) == 1
+        assert panel._checking is True
+        assert panel.status_label.text() == "Verificando atualizações..."
+        release.set()
+        deadline = time.monotonic() + 2
+        while panel._checking and time.monotonic() < deadline:
+            QTest.qWait(20)
+        assert panel._checking is False
+    finally:
+        release.set()
+        panel.shutdown()
+        assert panel._closed is True
+        assert panel._timer.isActive() is False
+        assert panel._worker is None or panel._worker.isFinished()
 
 
 def test_consulta_automatica_desligada_nao_dispara_no_inicio(qapp, isolated_data, monkeypatch):

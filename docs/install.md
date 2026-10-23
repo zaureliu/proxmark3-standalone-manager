@@ -33,7 +33,9 @@ Extract it to a folder without spaces, for example `C:\Tools\ProxSpace` or
 Inside that installation, the Iceman checkout must be a directory under
 `pm3` whose name matches `proxmark3` plus letters, digits, dots, or hyphens.
 A typical name is `proxmark3-v4.23346`. The application reads the version
-from `common\default_version_pm3.c`. It does not update git and it does not
+from `common\default_version_pm3.c`. The third quoted field in that file is
+a source fingerprint from `tools\mkversion.sh`, not the Git commit. It does
+not update git and it does not
 run `runme64.bat` on every command, because that setup rewrites the MSYS
 `fstab` and `/etc/passwd`.
 

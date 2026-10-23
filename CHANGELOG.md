@@ -9,6 +9,12 @@ commit. This branch does not create the tag.
 
 ## 2.0.0 — prepared, not published
 
+### Fixed
+
+- **Commit local** shows the Git HEAD of the selected checkout. The third
+  field of `common/default_version_pm3.c` stays labeled as a source
+  fingerprint and is not presented as that commit.
+
 ### Added
 
 - Read-only update monitor for the official Iceman and ProxSpace GitHub

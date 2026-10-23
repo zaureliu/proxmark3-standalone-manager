@@ -412,7 +412,8 @@ class MainWindow(QMainWindow):
         text = (
             f"PM3GENERIC, LED_ORDER=PM3EASY, extras: {extras}, {size}, "
             f"STANDALONE={standalone}. Repositório {self.context.env.repo_root.name} "
-            f"({self.context.env.version}, {self.context.env.commit}). "
+            f"({self.context.env.version}; identificador do arquivo de versão "
+            f"{self.context.env.commit}, não é o Git HEAD). "
             f"Makefile.platform efetivo: {internal}. Arquivo externo: {external}."
         )
         self.device_labels["config"].setText(text)

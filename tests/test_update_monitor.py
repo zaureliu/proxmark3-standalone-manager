@@ -343,6 +343,7 @@ def test_deteccao_de_head_branch_tag_detached_e_arvore_suja(tmp_path, monkeypatc
     assert selected.commit == ahead.commit
     assert selected.firmware_commit == "9ce8a4b6c"
     assert selected.commit != selected.firmware_commit
+    assert any("Não é o Git HEAD" in note and "9ce8a4b6c" in note for note in selected.notes)
     assert selected.platform == "PM3GENERIC"
     assert selected.standalone == "HF_MATTYRUN"
     assert selected.extras == "FLASH"
