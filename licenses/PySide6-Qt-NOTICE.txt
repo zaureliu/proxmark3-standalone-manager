@@ -1,0 +1,176 @@
+PySide6, Shiboken6, and Qt — notice for the Windows build
+==========================================================
+
+This notice is about the libraries conveyed inside the one-directory
+Windows build of Proxmark3 Standalone Manager. It is not a license for the
+application itself. The application license is the MIT text in MIT.txt and
+in the LICENSE file, and it covers only original material.
+
+Components
+----------
+
+Inspected wheels, installed for this build:
+
+- PySide6 6.12.0
+- shiboken6 6.12.0
+- Qt libraries shipped inside those wheels, file version 6.12.0.0
+  for Qt6Core.dll
+
+The wheel metadata for PySide6 and shiboken6 declares:
+
+    License: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+The distributor of this application selects LGPL-3.0-only for the
+PySide6, Shiboken6, and Qt libraries conveyed here. That selection does
+not relicense the original application code, and it does not claim a
+commercial Qt license. The only license file inside the installed wheel
+metadata is LicenseRef-Qt-Commercial.txt. That file tells a commercial
+licensee to follow their Qt agreement. No such agreement is part of this
+project, so that file is not the license of this build and it is not
+copied here as if it applied.
+
+The wheels do not ship the GPL or LGPL texts. GPL-3.0.txt and
+LGPL-3.0.txt in this directory are the texts that travel with this build.
+
+Copyright in those libraries stays with their authors, including The Qt
+Company and the Qt Project contributors. Qt is a trademark of The Qt
+Company. This application is not their product.
+
+No file in the application source modifies Qt, PySide6, or Shiboken.
+
+How the libraries are linked
+----------------------------
+
+The Windows build is a PyInstaller one-directory folder. The executable
+does not embed the Qt DLLs in a one-file archive. They are separate
+Portable Executable files under `_internal`, next to the other collected
+binaries. UPX is not used, so those files are not packed by UPX.
+
+PyInstaller loads them through the Windows loader. The bootloader sets the
+DLL search directory to `_internal` (the directory `sys._MEIPASS` refers
+to inside the frozen program). Windows still searches the executable's own
+directory first. A second copy of a DLL placed beside the `.exe` can
+therefore be preferred over the copy in `_internal`. To replace a library,
+replace the file that the program actually loads, and do not leave two
+copies.
+
+Qt plugins are not loaded by that DLL search. The PyInstaller Qt runtime
+hook registers an in-memory `qt.conf` and sets `QT_PLUGIN_PATH` to
+`_internal\PySide6\plugins`. A plugin has to be replaced inside that
+directory. Putting a plugin beside the executable does not install it.
+
+There is no checksum, Authenticode requirement, or application check that
+refuses a replaced Qt DLL. The application does not pin the hash of
+Qt6Core.dll, Qt6Gui.dll, or Qt6Widgets.dll.
+
+What to replace
+---------------
+
+Close the program first. Keep a copy of the whole folder.
+
+Main libraries in the inspected one-dir build (names are relative to
+the folder that contains Proxmark3StandaloneManager.exe):
+
+- `_internal\PySide6\Qt6Core.dll`
+- `_internal\PySide6\Qt6Gui.dll`
+- `_internal\PySide6\Qt6Widgets.dll`
+- `_internal\PySide6\pyside6.abi3.dll`
+- `_internal\shiboken6\shiboken6.abi3.dll`
+
+`licenses\QT-FILES.txt`, written when the folder is staged, is the list of
+DLLs and extension modules actually present in that build. If a name below
+is not in that list, it was not shipped. If a name is in that list and not
+discussed here, it is still conveyed and its own license still applies.
+
+The build records the path it actually used. Look in the folder. Do not
+assume a DLL sitting beside the executable is the one in use.
+
+Plugins that this kind of build has collected live under:
+
+- `_internal\PySide6\plugins\platforms\` (qwindows.dll is required for the
+  window to open)
+- `_internal\PySide6\plugins\styles\`
+- `_internal\PySide6\plugins\imageformats\`
+- `_internal\PySide6\plugins\iconengines\`
+- and any other subdirectory that the build actually contains
+
+Replace a plugin only with another build of the same plugin name, built
+for the same Qt 6.12 ABI and the same MSVC runtime. A modified Qt must
+stay interface-compatible with the shipped PySide6 and Shiboken6 bindings,
+or those bindings have to be replaced together with it.
+
+After replacing, start the executable again. A missing or incompatible
+Qt6Core.dll prevents the process from reaching the application. Restoring
+the previous file from the copy you kept brings the original library back.
+The program does not store a private copy of these DLLs elsewhere.
+
+Obstacles, stated plainly
+-------------------------
+
+1. The in-memory `qt.conf` is not a file you can edit. In-place replacement
+   inside `_internal` and `_internal\PySide6\plugins` does not need to edit
+   it. A modified Qt that needs a different prefix or plugin layout cannot
+   be pointed at a new layout without rebuilding the executable. That is a
+   real limit of this package.
+
+2. This folder is not a set of object files and a link script. You can
+   exchange the shared libraries. You cannot relink `pyside6.abi3.dll`
+   against a new Qt import library from the material in this folder alone.
+   LGPL-3.0 section 4(d)(0) asks for the Minimal Corresponding Source and
+   the application code in a form suitable for relinking. This package does
+   not provide that form.
+
+3. LGPL-3.0 section 4(d)(1) describes a shared-library mechanism that uses
+   a copy of the library already present on the user's system and that
+   still works with an interface-compatible modification. This build ships
+   its own Qt DLLs and loads those files. Replacing those files is possible.
+   That is not the same thing as using a Qt the user installed independently,
+   and it is not, by itself, a completed LGPL obligation.
+
+4. The corresponding source of the exact binaries in the wheel is a
+   separate obligation. Read CORRESPONDING-SOURCE.md. A link to the Qt
+   website is not that source. Shipping this notice is not that source.
+
+5. Disabling Qt6Core.dll and restoring the same file shows only that the
+   on-disk file is required to start. It does not show that a rebuilt,
+   modified Qt loads and runs.
+
+Other libraries collected beside Qt
+-----------------------------------
+
+PyInstaller may also copy Qt6Network.dll, Qt6Svg.dll, and other Qt modules
+when a plugin it collects depends on them. Whatever Qt DLL or plugin is
+actually in `_internal` is conveyed under the same LGPL-3.0-only selection,
+unless a file's own notice says otherwise. The inventory for a given build
+is the file list, not this paragraph.
+
+FFmpeg libraries (avcodec, avformat, avutil, swresample, swscale) and
+Qt WebEngine are not imported by this application. The spec excludes the
+WebEngine Python modules. If a build nevertheless contains those files,
+do not publish it until their notices are added. Check the file list.
+
+The Microsoft Visual C++ runtime DLLs that sit next to Qt are covered by
+MICROSOFT-RUNTIME.txt, not by the LGPL.
+
+OpenSSL and the software OpenGL library
+----------------------------------------
+
+The inspected build also copies `libssl-3.dll` and `libcrypto-3.dll` into
+`_internal`. Qt Network loads them. OpenSSL 3 is Apache-2.0. The Apache
+text is Apache-2.0.txt. This folder does not include a separate OpenSSL
+NOTICE file extracted from the Qt tree. That notice is part of the
+corresponding source described in CORRESPONDING-SOURCE.md.
+
+`_internal\PySide6\opengl32sw.dll` is the software OpenGL renderer shipped
+by Qt. Its third-party notices are in the Qt source archive, not copied
+out as their own file here.
+
+The official Qt DLLs contain a PDB path of the form
+`C:\Users\qt\work\qt\...`. That string is from the Qt project's build. It
+is not a path from the computer that packaged this application. It is not
+removed, because modifying the DLL would make the shipped binary differ
+from the wheel.
+
+These extra files are another reason the corresponding-source offer has to
+include the Qt archive, and another reason this folder is not published
+while that offer is incomplete.

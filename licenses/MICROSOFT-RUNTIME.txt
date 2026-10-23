@@ -1,0 +1,17 @@
+Microsoft Visual C++ runtime notice
+====================================
+
+The Windows build may include copies of runtime libraries such as
+VCRUNTIME140.dll, VCRUNTIME140_1.dll, MSVCP140.dll, MSVCP140_1.dll, and
+MSVCP140_2.dll. They come from the Python install and from the PySide6 and
+shiboken6 wheels. They are required to load those binaries.
+
+They are not part of the MIT license of this application and they are not
+part of the LGPL-3.0 selection for Qt and PySide6. Redistribution is
+allowed only under Microsoft's terms for the Visual C++ runtime libraries
+that those products already carry.
+
+The PySide6 6.12.0 wheel inspected for this project does not contain a
+separate Microsoft license document. This file does not reproduce
+Microsoft's terms and does not replace them. No Microsoft copyright is
+relicensed by LICENSE or by MIT.txt.

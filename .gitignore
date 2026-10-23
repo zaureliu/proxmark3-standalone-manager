@@ -1,0 +1,69 @@
+# Local environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Build outputs. The executable is rebuilt; it is not source.
+build/
+dist/
+
+# Qt and PySide6 corresponding-source archives kept by the distributor.
+# They are not part of the application zip and not part of this source tree.
+third-party-source/
+
+# Local application state: logs, firmware cache, backups, preferences,
+# hardware identity, audit notes and temporary scripts.
+var/
+
+# Generated from the local Iceman checkout. The text belongs to that tree.
+catalog/modulos.json
+
+# Personal or machine-specific configuration
+preferences.json
+self-check.json
+hw-version.txt
+*.local.json
+.env
+.env.*
+
+# Firmware, tag dumps and captured card data
+*.elf
+*.bin
+*.s19
+*.dump
+*.dmp
+*.eml
+*.jsonl
+
+# Secrets and editor files
+*.pem
+*.key
+*.pfx
+secrets.*
+credentials.*
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+*.lnk
+*.log
+*.tmp
+
+# Binaries and archives. Do not ignore application source, scripts,
+# Proxmark3StandaloneManager.spec, assets/icon.ico, or .pm3manager-root.
+*.exe
+*.dll
+*.pyd
+*.so
+*.zip
+*.7z
+*.msi
+*.tar
+*.gz
+*.xz

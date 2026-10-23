@@ -1,0 +1,16 @@
+[project]
+name = "proxmark3-standalone-manager"
+version = "1.0.0"
+description = "Desktop application that compiles and, only when explicitly authorized, flashes a Proxmark3 Standalone module through an existing ProxSpace installation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Anderson A. Justino"}]
+dependencies = [
+    "PySide6>=6.6.0",
+    "pyserial>=3.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --basetemp=var/pytest"

@@ -1,0 +1,50 @@
+SOURCE REPOSITORY AND BINARY PACKAGE ARE NOT THE SAME STATE.
+
+Source repository: the original application source may be published by
+itself as source code only. That publication does not include a Windows
+executable, Qt, PySide6, or Shiboken binaries, compiled firmware, ProxSpace,
+or an Iceman checkout. The MIT license applies only to the original
+material. Publishing the source is not a redistribution of Qt or Iceman.
+
+BINARY PACKAGE: PUBLICATION: BLOCKED
+
+When this file sits beside Proxmark3StandaloneManager.exe, it marks a local
+validation build of Proxmark3 Standalone Manager 1.0.0 for Windows x64.
+That binary folder and any zip of it are not approved for public
+distribution, upload, or a GitHub Release.
+
+The original application code is under the MIT license. Copyright (c) 2026
+Anderson A. Justino. That license does not cover Qt, PySide6, Shiboken6,
+or the other third-party components conveyed in a local build.
+
+The one-directory layout puts the Qt libraries on disk as separate files.
+That is necessary for a user to try replacing them. It is not, by itself,
+compliance with the LGPL-3.0. Read licenses\PySide6-Qt-NOTICE.txt and
+CORRESPONDING-SOURCE.md before treating a built folder as distributable.
+
+What is still missing before any public binary copy:
+
+1. The corresponding source of the exact Qt 6.12.0 and PySide6 6.12.0
+   binaries conveyed in a local build is not offered to recipients by the
+   distributor. A copy kept only on the build machine is not that offer. A
+   generic link to the Qt website is not that offer. The offer has to stay
+   under the distributor's control for the period the license requires, and
+   it has to include any modifications. This project did not modify Qt or
+   PySide6.
+
+2. It has not been shown that the Qt binaries inside the PySide6 6.12.0
+   wheel are the unmodified result of building the public source archives
+   named in CORRESPONDING-SOURCE.md. Until that is shown, the corresponding
+   source of the binaries actually shipped cannot be certified.
+
+3. The package does not include the object files or build scripts needed
+   to relink PySide6 against a modified Qt. Replacing a DLL in place is
+   documented and can be tested. That test does not prove a modified Qt
+   rebuild.
+
+4. Qt's own third-party notices (for libraries Qt bundles) live in the
+   corresponding source tree. They are not a substitute for item 1, and
+   they are not all copied into a built folder as separate files.
+
+Do not upload a zip that contains the executable. Permission to publish
+the source repository is not permission to publish the binary package.
