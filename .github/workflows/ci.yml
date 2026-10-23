@@ -1,18 +1,29 @@
 name: CI
 
+# checkout@v7 and setup-python@v7 both declare runs.using: node24.
+# GitHub-hosted windows-latest already meets the runner minimum (2.327.1).
+# Python stays 3.11. The token can only read this repository.
+# This job does not flash, upload artifacts, or publish packages.
+# Tests that need a local ProxSpace checkout skip themselves.
+
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: windows-latest
     steps:
       - name: Check out the application
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -28,7 +39,3 @@ jobs:
 
       - name: Run the automated tests
         run: python -m pytest tests
-
-      # This job does not flash firmware, upload artifacts, or expect ProxSpace
-      # or a Proxmark3 to be present. Tests that need the local laboratory
-      # checkout skip themselves when that checkout is absent.
