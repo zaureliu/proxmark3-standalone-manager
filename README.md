@@ -8,7 +8,7 @@ The window is in Brazilian Portuguese. This repository is the manager. It
 is not the Proxmark firmware, it is not ProxSpace, and it is not an official
 RfidResearchGroup product.
 
-Version 1.0.0.
+Version 2.0.0.
 
 **Distribution: Source Code Only**
 
@@ -67,6 +67,10 @@ Compiling without flashing is a normal, supported action.
 - Includes a local script that can build a windowed Windows executable on
   the user's computer. That executable is not part of this repository and
   does not embed the firmware.
+- Reports Iceman and ProxSpace updates from the official GitHub API. The
+  report is informational. The application does not pull, compile, or flash
+  because a newer release or commit exists. See
+  [Update monitor](docs/updates.md).
 
 ## System requirements
 
@@ -101,7 +105,7 @@ licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Supported hardware and limitations
 
-| Topic | Version 1.0.0 |
+| Topic | Version 2.0.0 |
 | --- | --- |
 | Tested MCU | AT91SAM7S512, 512 KB internal flash, external SPI flash reported as 2048 Kb |
 | Image this app builds | `PM3GENERIC` only |
@@ -398,8 +402,10 @@ a radio test.
   `PUBLICATION: BLOCKED` until whoever distributes that package offers the
   corresponding source of the exact Qt and PySide6 binaries. See
   [docs/licensing.md](docs/licensing.md).
-- The application does not update Iceman or ProxSpace and does not run on
-  macOS or Linux.
+- The update monitor does not modify Iceman, ProxSpace, or the device. It
+  only reports official GitHub releases and commits. Compatibility of a
+  newer release is not assumed. The application does not run on macOS or
+  Linux.
 - Screenshots are not in the tree. The reason is
   [docs/screenshots/README.md](docs/screenshots/README.md).
 

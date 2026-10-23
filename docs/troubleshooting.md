@@ -34,6 +34,22 @@ the preferences and returns without flashing.
 `OK200` is reserved for a laboratory proof the application itself does not
 perform. You should not see it from the current buttons.
 
+## Update monitor
+
+**Não foi possível consultar o GitHub.** means the live request failed.
+If a previous result exists, the panel also says **Exibindo resultado da
+última verificação.** Those lines are the last successful check, not a new
+one. **Repositório ProxSpace arquivado.** means GitHub reports the official
+ProxSpace repository as archived. It does not mean the local folder is
+broken. **Compatibilidade da atualização não verificada.** means a release
+was seen and was not tested against this board.
+
+The monitor never flashes and never runs `git pull`. A repeated notice for
+the same release is not shown again. Disable the schedule under
+**Configurações** in **Atualizações**. The interval is stored as
+`updates_interval_minutes` in the preferences file. Details are in
+`docs/updates.md`.
+
 ## Bootloader button
 
 If the device waits for the button, disconnect USB, hold the button,

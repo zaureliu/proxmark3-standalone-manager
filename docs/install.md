@@ -138,6 +138,15 @@ fails, the authorization is gone. The only flash command is
 Details of ports, modules, and errors are in `docs/compatibility.md` and
 `docs/troubleshooting.md`.
 
+## 12. Update monitor
+
+The **Atualizações** section checks the official Iceman and ProxSpace
+repositories and does not change either installation. The default period is
+60 minutes. Turn it off, or change the period, with **Configurações** in
+that section. The behavior, the cache, and the decision not to apply updates
+are described in `docs/updates.md`. The check does not need the Proxmark3
+to be plugged in.
+
 ## Optional: build a one-directory executable locally
 
 This is not part of the source publication. On the same computer:

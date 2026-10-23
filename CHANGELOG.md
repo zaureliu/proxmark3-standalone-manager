@@ -1,9 +1,27 @@
 # Changelog
 
-The version number in `pm3manager/__init__.py` and `pyproject.toml` is 1.0.0.
+The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.0.0.
 Dates below are the dates the work was prepared, not publication dates.
+Version 2.0.0 is on `feature/update-monitor-v2` and is not published.
+There is still no `v1.0.0` tag. The published V1 commit on `main` is
+`0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`. A later decision can tag that
+commit. This branch does not create the tag.
 
-## Unreleased
+## 2.0.0 — prepared, not published
+
+### Added
+
+- Read-only update monitor for the official Iceman and ProxSpace GitHub
+  repositories. The **Atualizações** panel shows the local checkout, the
+  latest release, and the default-branch commit separately. It repeats the
+  check every 60 minutes unless that schedule is disabled, keeps the last
+  result when GitHub cannot be reached, and does not pull, compile, or
+  flash. See `docs/updates.md`.
+
+## Already on published main
+
+These notes were written while 1.0.0 was being prepared. They are on the
+published `main` commit named above. They are not part of the 2.0.0 monitor.
 
 ### Fixed
 

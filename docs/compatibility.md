@@ -1,6 +1,7 @@
 # Compatibility
 
-Version 1.0.0 compiles one platform: `PM3GENERIC`, with `LED_ORDER=PM3EASY`.
+Version 2.0.0 compiles one platform: `PM3GENERIC`, with `LED_ORDER=PM3EASY`.
+That is the same image rule as 1.0.0. The update monitor does not change it.
 That LED setting selects the AT91SAM7S chip support in the Iceman makefiles.
 It does not mean the connected board is a Proxmark3 Easy.
 
