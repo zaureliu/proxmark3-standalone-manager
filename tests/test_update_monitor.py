@@ -6,6 +6,7 @@ import ast
 import json
 import os
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -683,39 +684,69 @@ def test_cache_persiste_substitui_resultado_antigo_e_nao_e_o_cache_de_firmware(t
     assert UpdateCache(broken).stored_report("iceman") is None
 
 
+def _overlap_without_qt(root: Path) -> None:
+    """A espera de thread aborta no Windows quando o pytest já carregou o PySide6."""
+    script = root / "overlap_check.py"
+    script.write_text(
+        "\n".join(
+            (
+                "import sys",
+                "import threading",
+                "from pathlib import Path",
+                "sys.path.insert(0, sys.argv[1])",
+                "from tests.test_update_monitor import ScriptedClient, local_at, world",
+                "from pm3manager.updates.update_cache import UpdateCache",
+                "from pm3manager.updates.update_service import UpdateService",
+                "started = threading.Event()",
+                "release = threading.Event()",
+                "calls = []",
+                "def blocking(url, etag, missing_ok):",
+                "    calls.append(url)",
+                "    started.set()",
+                "    assert release.wait(5)",
+                "    return world()(url, etag, missing_ok)",
+                "service = UpdateService(ScriptedClient(blocking), UpdateCache(Path(sys.argv[2])))",
+                "holder = {}",
+                "finished = threading.Event()",
+                "def run():",
+                "    try:",
+                "        holder['first'] = service.check(local_at(), local_at(version='v3'))",
+                "    finally:",
+                "        finished.set()",
+                "worker = threading.Thread(target=run)",
+                "worker.start()",
+                "assert started.wait(2)",
+                "second = service.check(local_at(), local_at(version='v3'))",
+                "assert second.busy is True",
+                "assert len(calls) == 1",
+                "release.set()",
+                "assert finished.wait(5)",
+                "assert holder['first'].busy is False",
+                "assert service.running is False",
+                "print('ok')",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["PM3MANAGER_ENV"] = "teste"
+    env["PYTHONPATH"] = str(project_root()) + os.pathsep + env.get("PYTHONPATH", "")
+    completed = subprocess.run(
+        [sys.executable, str(script), str(project_root()), str(root / "updates")],
+        cwd=str(project_root()),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, f"{completed.returncode}\n{completed.stdout}\n{completed.stderr}"
+    assert "ok" in completed.stdout
+
+
 def test_consulta_simultanea_cancelamento_e_notificacao_sem_repetir(tmp_path):
-    started = threading.Event()
-    release = threading.Event()
-    calls = []
-
-    def blocking(url, etag, missing_ok):
-        calls.append(url)
-        started.set()
-        assert release.wait(5)
-        return world()(url, etag, missing_ok)
-
-    service = UpdateService(ScriptedClient(blocking), UpdateCache(tmp_path / "updates"))
-    holder = {}
-    finished = threading.Event()
-
-    def run() -> None:
-        try:
-            holder["first"] = service.check(local_at(), local_at(version="v3"))
-        finally:
-            finished.set()
-
-    worker = threading.Thread(target=run)
-    worker.start()
-    assert started.wait(2)
-    second = service.check(local_at(), local_at(version="v3"))
-    assert second.busy is True
-    assert len(calls) == 1
-    release.set()
-    # join() com tempo no Python 3.11 do Windows pode falhar com violação de
-    # acesso quando a thread termina no mesmo instante. O evento cobre o fim.
-    assert finished.wait(5)
-    assert holder["first"].busy is False
-    assert service.running is False
+    _overlap_without_qt(tmp_path)
 
     cache = UpdateCache(tmp_path / "notice")
     client = ScriptedClient(world())
