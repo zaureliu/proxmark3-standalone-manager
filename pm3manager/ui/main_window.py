@@ -6,7 +6,7 @@ import html
 import os
 import sys
 
-from PySide6.QtCore import QElapsedTimer, Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, QSize, Qt, QTimer
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -51,8 +52,112 @@ from pm3manager.preferences import Preferences
 from pm3manager.workflow.context import AppContext
 from pm3manager.workflow.service import ManagerService, build_config, incompatible_flash
 
+_SPLIT_FLOOR = 48
+_MAIN_SPLIT_FLOOR = 80
+
+
+class _HeightBody(QWidget):
+    """Repassa a altura exigida pelo texto quebrado ao QScrollArea."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+        self.setObjectName("heightBody")
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        hint = super().minimumSizeHint()
+        return QSize(0, hint.height())
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 - API do Qt
+        layout = self.layout()
+        return bool(layout is not None and layout.hasHeightForWidth())
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - API do Qt
+        layout = self.layout()
+        if layout is None:
+            return super().heightForWidth(width)
+        return layout.heightForWidth(width)
+
+
+def _parse_split_sizes(text: str, count: int, floor: int) -> list[int] | None:
+    parts = [item.strip() for item in str(text or "").split(",") if item.strip()]
+    if len(parts) != count:
+        return None
+    try:
+        values = [int(item) for item in parts]
+    except ValueError:
+        return None
+    if any(item < floor for item in values) or sum(values) <= 0:
+        return None
+    return values
+
+
+def _scrollable(body: QWidget) -> QScrollArea:
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setWidget(body)
+    scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    scroll.setMinimumWidth(0)
+    scroll.setMinimumHeight(0)
+    scroll.setStyleSheet(
+        "QScrollArea { background: transparent; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: transparent; }"
+    )
+    viewport = scroll.viewport()
+    viewport.setAutoFillBackground(False)
+
+    def _fit_width(event, area=scroll, content=body) -> None:
+        QScrollArea.resizeEvent(area, event)
+        content.setMaximumWidth(max(0, area.viewport().width()))
+
+    scroll.resizeEvent = _fit_width  # type: ignore[method-assign]
+    return scroll
+
+
+def _section(parent: QVBoxLayout, title: str) -> QVBoxLayout:
+    block = QVBoxLayout()
+    block.setSpacing(4)
+    caption = QLabel(title)
+    caption.setObjectName("section")
+    block.addWidget(caption)
+    parent.addLayout(block)
+    return block
+
+
+def _wrapping_check(checkbox: QCheckBox, text: str) -> QWidget:
+    checkbox.setText("")
+    checkbox.setAccessibleName(text)
+    checkbox.setToolTip(text)
+    row = _HeightBody()
+    row.setObjectName("checkRow")
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    label = QLabel(text)
+    label.setWordWrap(True)
+    label.setObjectName("checkText")
+    layout.addWidget(checkbox, 0, Qt.AlignmentFlag.AlignTop)
+    layout.addWidget(label, 1)
+
+    def _press(event, box=checkbox, caption=label) -> None:
+        if box.isEnabled() and event.button() == Qt.MouseButton.LeftButton:
+            box.toggle()
+            return
+        QLabel.mousePressEvent(caption, event)
+
+    label.mousePressEvent = _press  # type: ignore[method-assign]
+    return row
+
 
 class MainWindow(QMainWindow):
+    WINDOW_MIN_WIDTH = 760
+    WINDOW_MIN_HEIGHT = 520
+    NARROW_LAYOUT_WIDTH = 980
     def __init__(self, context: AppContext) -> None:
         super().__init__()
         self.context = context
@@ -74,7 +179,18 @@ class MainWindow(QMainWindow):
         self._clock.timeout.connect(self._tick)
         self.setWindowTitle("Proxmark3 Standalone Manager")
         self.resize(1240, 820)
-        self.setMinimumSize(980, 720)
+        self.setMinimumSize(self.WINDOW_MIN_WIDTH, self.WINDOW_MIN_HEIGHT)
+        self._top_narrow: bool | None = None
+        self._splits_ready = False
+        self._module_columns_custom = False
+        self._fitting_columns = False
+        self._fitting_text = False
+        self._balancing_progress = False
+        self._progress_custom = False
+        self._split_save = QTimer(self)
+        self._split_save.setSingleShot(True)
+        self._split_save.setInterval(400)
+        self._split_save.timeout.connect(self._persist_splits)
         self._build()
         self._apply_recovery_note()
         self._refresh_modules()
@@ -111,26 +227,45 @@ class MainWindow(QMainWindow):
         header.addWidget(self.status_pill)
         root.addLayout(header)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self._device_card())
-        splitter.addWidget(self._module_card())
-        splitter.addWidget(self._operation_card())
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 4)
-        splitter.setStretchFactor(2, 3)
-        root.addWidget(splitter, 1)
+        self._top_split = QSplitter(Qt.Orientation.Horizontal)
+        self._top_split.setObjectName("topSplit")
+        self._top_split.setChildrenCollapsible(False)
+        self._top_split.setHandleWidth(8)
+        for index, widget in enumerate((self._device_card(), self._module_card(), self._operation_card())):
+            self._top_split.addWidget(widget)
+            self._top_split.setCollapsible(index, False)
+        self._top_split.setStretchFactor(0, 3)
+        self._top_split.setStretchFactor(1, 4)
+        self._top_split.setStretchFactor(2, 3)
+        self._top_split.setMinimumHeight(190)
+
         self.updates_panel = UpdatesPanel(self.context, self)
-        updates_scroll = QScrollArea()
-        updates_scroll.setWidgetResizable(True)
-        updates_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        updates_scroll.setMaximumHeight(250)
-        updates_scroll.setWidget(self.updates_panel)
-        root.addWidget(updates_scroll)
-        root.addWidget(self._progress_card())
+        self.updates_panel.setMinimumWidth(0)
+
+        progress = self._progress_card()
+        progress.setMinimumHeight(180)
+        self._main_split = QSplitter(Qt.Orientation.Vertical)
+        self._main_split.setObjectName("mainSplit")
+        self._main_split.setChildrenCollapsible(False)
+        self._main_split.setHandleWidth(8)
+        self._main_split.addWidget(self._top_split)
+        self._main_split.addWidget(self.updates_panel)
+        self._main_split.addWidget(progress)
+        for index, stretch in enumerate((34, 42, 24)):
+            self._main_split.setStretchFactor(index, stretch)
+            self._main_split.setCollapsible(index, False)
+        self._main_split.splitterMoved.connect(self._schedule_split_save)
+        self._top_split.splitterMoved.connect(self._schedule_split_save)
+        self._page_scroll = _scrollable(self._main_split)
+        self._page_scroll.setObjectName("pageScroll")
+        root.addWidget(self._page_scroll, 1)
 
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
         frame.setObjectName("card")
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        frame.setMinimumWidth(0)
+        frame.setMinimumHeight(0)
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(8)
@@ -140,49 +275,82 @@ class MainWindow(QMainWindow):
         layout.addWidget(label)
         return frame, layout
 
+    def _comfortable_height(self, widget: QWidget) -> int:
+        return max(32, widget.fontMetrics().height() + 16)
+
+    def _labeled_value(self, caption: str, key: str) -> QWidget:
+        box = QWidget()
+        box.setObjectName("checkRow")
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        cap = QLabel(caption)
+        cap.setObjectName("muted")
+        value = QLabel("—")
+        value.setWordWrap(True)
+        value.setObjectName("value")
+        value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        value.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        layout.addWidget(cap)
+        layout.addWidget(value)
+        self.device_labels[key] = value
+        return box
+
     def _device_card(self) -> QFrame:
         frame, layout = self._card("Dispositivo")
+        self.device_labels = {}
+        body = _HeightBody()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 2, 0)
+        body_layout.setSpacing(10)
+
+        ports = _section(body_layout, "Porta COM")
         self.device_combo = QComboBox()
         self.device_combo.currentIndexChanged.connect(self._device_changed)
-        layout.addWidget(self.device_combo)
+        self.device_combo.setMinimumHeight(self._comfortable_height(self.device_combo))
+        ports.addWidget(self.device_combo)
+        ports.addWidget(self._labeled_value("Porta detectada", "port"))
+        ports.addWidget(self._labeled_value("Confiança", "usb"))
+
+        space = _section(body_layout, "ProxSpace")
         self.proxspace_label = QLabel(str(self.context.env.proxspace_root))
         self.proxspace_label.setWordWrap(True)
         self.proxspace_label.setObjectName("muted")
         self.proxspace_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.proxspace_label)
-        self.repo_combo = QComboBox()
-        self.repo_combo.currentTextChanged.connect(self._repo_changed)
-        layout.addWidget(self.repo_combo)
+        space.addWidget(self.proxspace_label)
         self.proxspace_button = QPushButton("Selecionar ProxSpace")
         self.proxspace_button.clicked.connect(self._choose_proxspace)
-        layout.addWidget(self.proxspace_button)
+        self.proxspace_button.setMinimumHeight(self._comfortable_height(self.proxspace_button))
+        space.addWidget(self.proxspace_button)
+
+        checkout = _section(body_layout, "Checkout Iceman")
+        self.repo_combo = QComboBox()
+        self.repo_combo.currentTextChanged.connect(self._repo_changed)
+        self.repo_combo.setMinimumHeight(self._comfortable_height(self.repo_combo))
+        checkout.addWidget(self.repo_combo)
         self._populate_repo_combo()
-        self.device_labels = {}
-        grid = QGridLayout()
-        rows = (
-            ("hardware", "Hardware"),
-            ("port", "Porta COM"),
-            ("usb", "Confiança"),
-            ("firmware", "Firmware"),
-            ("config", "Compilação"),
-        )
-        for row, (key, caption) in enumerate(rows):
-            caption_label = QLabel(caption)
-            caption_label.setObjectName("muted")
-            value = QLabel("—")
-            value.setWordWrap(True)
-            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            grid.addWidget(caption_label, row, 0)
-            grid.addWidget(value, row, 1)
-            self.device_labels[key] = value
-        layout.addLayout(grid)
-        self.spi_check = QCheckBox("Confirmo que esta placa tem memória flash SPI externa")
+
+        hardware = _section(body_layout, "Hardware")
+        hardware.addWidget(self._labeled_value("Hardware", "hardware"))
+        hardware.addWidget(self._labeled_value("Firmware", "firmware"))
+
+        platform = _section(body_layout, "Configuração da plataforma")
+        self.spi_check = QCheckBox()
         self.spi_check.setChecked(self.context.prefs.spi_flash_confirmada)
         self.spi_check.toggled.connect(self._spi_toggled)
-        self.size_check = QCheckBox("Forçar PLATFORM_SIZE=256 (somente MCU com 256 KB internos)")
+        self.size_check = QCheckBox()
         self.size_check.toggled.connect(self._size_toggled)
-        layout.addWidget(self.spi_check)
-        layout.addWidget(self.size_check)
+        platform.addWidget(_wrapping_check(
+            self.spi_check,
+            "Confirmo que esta placa tem memória flash SPI externa",
+        ))
+        platform.addWidget(_wrapping_check(
+            self.size_check,
+            "Forçar PLATFORM_SIZE=256 (somente MCU com 256 KB internos)",
+        ))
+
+        technical = _section(body_layout, "Informações técnicas")
+        technical.addWidget(self._labeled_value("Compilação", "config"))
         hint = QLabel(
             "O make lê Makefile.platform na raiz do checkout. O arquivo em pm3/ não entra nessa compilação. "
             "PM3GENERIC com LED_ORDER=PM3EASY define o chip AT91SAM7S; isso não identifica o modelo como Easy. "
@@ -191,8 +359,11 @@ class MainWindow(QMainWindow):
         )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
-        layout.addWidget(hint)
-        layout.addStretch(1)
+        technical.addWidget(hint)
+        body_layout.addStretch(1)
+        self._device_scroll = _scrollable(body)
+        self._device_scroll.setObjectName("deviceScroll")
+        layout.addWidget(self._device_scroll, 1)
         return frame
 
     def _module_card(self) -> QFrame:
@@ -200,11 +371,15 @@ class MainWindow(QMainWindow):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Pesquisar módulo, protocolo ou identificador")
         self.search_box.textChanged.connect(self._refresh_modules)
+        self.search_box.setMinimumHeight(self._comfortable_height(self.search_box))
+        self.search_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.category_combo = QComboBox()
         self.category_combo.addItems(
             ["Todas", "Low Frequency (LF)", "High Frequency (HF)", "Multimodo", "Outros"]
         )
         self.category_combo.currentTextChanged.connect(self._refresh_modules)
+        self.category_combo.setMinimumHeight(self._comfortable_height(self.category_combo))
+        self.category_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.search_box)
         layout.addWidget(self.category_combo)
         self.module_table = QTableWidget(0, 4)
@@ -212,27 +387,53 @@ class MainWindow(QMainWindow):
         self.module_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.module_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.module_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.module_table.setAlternatingRowColors(True)
+        self.module_table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.module_table.setWordWrap(False)
+        self.module_table.setHorizontalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
+        self.module_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.module_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.module_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.module_table.setMinimumWidth(0)
         self.module_table.verticalHeader().setVisible(False)
-        self.module_table.horizontalHeader().setStretchLastSection(True)
+        self.module_table.verticalHeader().setDefaultSectionSize(30)
+        header = self.module_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(64)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.sectionResized.connect(self._module_column_resized)
         self.module_table.itemSelectionChanged.connect(self._module_changed)
         layout.addWidget(self.module_table, 1)
         return frame
 
     def _operation_card(self) -> QFrame:
         frame, layout = self._card("Operações")
+        body = _HeightBody()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 2, 0)
+        body_layout.setSpacing(8)
         self.details = QTextBrowser()
         self.details.setOpenExternalLinks(False)
-        layout.addWidget(self.details, 1)
-        self.confirm_uncertain = QCheckBox("Confirmo os requisitos deste módulo neste Proxmark3")
+        self.details.setMinimumHeight(72)
+        self.details.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        body_layout.addWidget(self.details, 1)
+        self.confirm_uncertain = QCheckBox()
         self.confirm_uncertain.toggled.connect(self._uncertain_toggled)
-        layout.addWidget(self.confirm_uncertain)
-        self.authorize_check = QCheckBox(
-            "Autorizar gravação real da fullimage no próximo Aplicar módulo"
-        )
+        body_layout.addWidget(_wrapping_check(
+            self.confirm_uncertain,
+            "Confirmo os requisitos deste módulo neste Proxmark3",
+        ))
+        self.authorize_check = QCheckBox()
         self.authorize_check.setChecked(False)
         self.context.prefs.flash_autorizado = False
         self.authorize_check.toggled.connect(self._authorize_toggled)
-        layout.addWidget(self.authorize_check)
+        body_layout.addWidget(_wrapping_check(
+            self.authorize_check,
+            "Autorizar gravação real da fullimage no próximo Aplicar módulo",
+        ))
         authorize_hint = QLabel(
             "Desmarcada, Aplicar módulo só compila. Marcada, essa operação grava a fullimage "
             "real com pm3-flash-fullimage e não pede outra confirmação. A autorização não é "
@@ -241,7 +442,7 @@ class MainWindow(QMainWindow):
         )
         authorize_hint.setObjectName("hint")
         authorize_hint.setWordWrap(True)
-        layout.addWidget(authorize_hint)
+        body_layout.addWidget(authorize_hint)
         self.apply_button = QPushButton("Aplicar módulo")
         self.apply_button.setObjectName("primary")
         self.rebuild_button = QPushButton("Recompilar")
@@ -260,27 +461,35 @@ class MainWindow(QMainWindow):
             self.client_button,
             self.logs_button,
         ):
-            layout.addWidget(button)
+            button.setMinimumHeight(self._comfortable_height(button))
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            body_layout.addWidget(button)
         self.block_reason = QLabel("")
         self.block_reason.setObjectName("hint")
         self.block_reason.setWordWrap(True)
-        layout.addWidget(self.block_reason)
+        body_layout.addWidget(self.block_reason)
+        self._operation_scroll = _scrollable(body)
+        self._operation_scroll.setObjectName("operationScroll")
+        layout.addWidget(self._operation_scroll, 1)
         return frame
 
     def _progress_card(self) -> QFrame:
         frame, layout = self._card("Progresso")
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(4)
         top = QHBoxLayout()
         self.stage_label = QLabel("Etapa: aguardando")
+        self.stage_label.setWordWrap(True)
         self.elapsed_label = QLabel("Tempo decorrido: 00:00")
         self.elapsed_label.setObjectName("muted")
-        top.addWidget(self.stage_label)
-        top.addStretch(1)
-        top.addWidget(self.elapsed_label)
+        top.addWidget(self.stage_label, 1)
+        top.addWidget(self.elapsed_label, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(top)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
+        self.progress.setFixedHeight(max(14, self.fontMetrics().height()))
         layout.addWidget(self.progress)
         self.summary_label = QLabel("Conecte o Proxmark3 e escolha um módulo.")
         self.summary_label.setWordWrap(True)
@@ -292,23 +501,43 @@ class MainWindow(QMainWindow):
         )
         note.setObjectName("hint")
         note.setWordWrap(True)
-        layout.addWidget(note)
         self.log_legend = QLabel(
             "Estados: Informação, Aviso, Erro operacional, Falha crítica, "
             "Evento de teste, Validação parcial e Validação concluída."
         )
         self.log_legend.setObjectName("hint")
         self.log_legend.setWordWrap(True)
-        layout.addWidget(self.log_legend)
+        notes = _HeightBody()
+        notes_layout = QVBoxLayout(notes)
+        notes_layout.setContentsMargins(0, 0, 0, 0)
+        notes_layout.setSpacing(6)
+        notes_layout.addWidget(note)
+        notes_layout.addWidget(self.log_legend)
+        self._progress_scroll = _scrollable(notes)
+        self._progress_scroll.setObjectName("progressScroll")
+        self._progress_scroll.setMinimumHeight(24)
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setAcceptRichText(True)
         self.log_view.document().setMaximumBlockCount(2000)
         self.log_view.setFont(QFont("Consolas", 10))
+        self.log_view.setMinimumHeight(64)
+        self.log_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.log_view.setPlaceholderText(
             "O estado de cada operação aparece identificado. O texto técnico da compilação e da gravação permanece neste painel."
         )
-        layout.addWidget(self.log_view, 1)
+        self._progress_split = QSplitter(Qt.Orientation.Vertical)
+        self._progress_split.setObjectName("progressSplit")
+        self._progress_split.setChildrenCollapsible(False)
+        self._progress_split.setHandleWidth(6)
+        self._progress_split.addWidget(self._progress_scroll)
+        self._progress_split.addWidget(self.log_view)
+        self._progress_split.setStretchFactor(0, 1)
+        self._progress_split.setStretchFactor(1, 4)
+        self._progress_split.setCollapsible(0, False)
+        self._progress_split.setCollapsible(1, False)
+        self._progress_split.splitterMoved.connect(self._progress_moved)
+        layout.addWidget(self._progress_split, 1)
         return frame
 
     def set_status(self, status: str) -> None:
@@ -465,10 +694,14 @@ class MainWindow(QMainWindow):
             values = (module.id, module.name, COMPATIBILITY_LABEL[module.compatibility], cache)
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setToolTip(value)
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, module.id)
+                    item.setToolTip(f"{module.id}\n{module.name}")
+                elif column == 1:
+                    item.setToolTip(f"{module.name}\n\n{module.description}")
                 self.module_table.setItem(row, column, item)
-        self.module_table.resizeColumnsToContents()
+        self._fit_module_columns()
         if selected:
             self._select_module(selected.id)
         self._module_changed()
@@ -504,6 +737,9 @@ class MainWindow(QMainWindow):
         self.confirm_uncertain.blockSignals(True)
         if module is None:
             self.details.setPlainText("Selecione um módulo.")
+            row = self.confirm_uncertain.parentWidget()
+            if row is not None:
+                row.setVisible(False)
             self.confirm_uncertain.setVisible(False)
         else:
             self.context.prefs.last_module_id = module.id
@@ -528,6 +764,9 @@ class MainWindow(QMainWindow):
             ]
             self.details.setPlainText("\n".join(lines))
             uncertain = module.compatibility == Compatibility.UNCERTAIN
+            row = self.confirm_uncertain.parentWidget()
+            if row is not None:
+                row.setVisible(uncertain)
             self.confirm_uncertain.setVisible(uncertain)
             self.confirm_uncertain.setChecked(module.id in self.context.prefs.confirmed_uncertain_modules)
         self.confirm_uncertain.blockSignals(False)
@@ -872,6 +1111,149 @@ class MainWindow(QMainWindow):
             f"<span style='color:#d7dde6;font-family:Consolas,monospace'>{prefix}{safe}</span>"
         )
 
+    def showEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        super().showEvent(event)
+        if self._splits_ready:
+            self._fit_module_columns()
+            return
+        self._top_narrow = None
+        self._apply_top_orientation()
+        self._apply_saved_main_sizes()
+        self._fit_module_columns()
+        self._fit_wrapped_text(self._device_scroll)
+        self._fit_wrapped_text(self._operation_scroll)
+        self._fit_wrapped_text(self._progress_scroll)
+        self._balance_progress()
+        self._splits_ready = True
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        super().resizeEvent(event)
+        if not self.isVisible() or not hasattr(self, "_top_split"):
+            return
+        self._apply_top_orientation()
+        self._fit_module_columns()
+        if self._fitting_text or not hasattr(self, "_device_scroll"):
+            return
+        self._fitting_text = True
+        try:
+            self._fit_wrapped_text(self._device_scroll)
+            self._fit_wrapped_text(self._operation_scroll)
+            self._fit_wrapped_text(self._progress_scroll)
+            self._balance_progress()
+        finally:
+            self._fitting_text = False
+
+    def _fit_wrapped_text(self, scroll: QScrollArea) -> None:
+        body = scroll.widget()
+        if body is None:
+            return
+        for label in body.findChildren(QLabel):
+            if not label.wordWrap() or label.width() < 20:
+                continue
+            needed = label.heightForWidth(label.width())
+            if needed > label.minimumHeight() + 1:
+                label.setMinimumHeight(needed)
+        body.updateGeometry()
+
+    def _apply_top_orientation(self) -> None:
+        central = self.centralWidget()
+        width = central.width() if central is not None else self.width()
+        narrow = width < self.NARROW_LAYOUT_WIDTH
+        if narrow == self._top_narrow:
+            return
+        self._top_narrow = narrow
+        target = Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
+        if self._top_split.orientation() != target:
+            self._top_split.setOrientation(target)
+        self._top_split.setMinimumHeight(450 if narrow else 190)
+        self._apply_saved_top_sizes()
+
+    def _apply_saved_main_sizes(self) -> None:
+        sizes = _parse_split_sizes(self.context.prefs.ui_main_split, 3, _MAIN_SPLIT_FLOOR)
+        if sizes is None:
+            total = max(self._main_split.height(), 480)
+            sizes = [total * 34 // 100, total * 42 // 100, total * 24 // 100]
+        self._main_split.setSizes(sizes)
+
+    def _apply_saved_top_sizes(self) -> None:
+        raw = self.context.prefs.ui_top_split_narrow if self._top_narrow else self.context.prefs.ui_top_split
+        sizes = _parse_split_sizes(raw, 3, _SPLIT_FLOOR)
+        if sizes is None:
+            total = self._top_split.height() if self._top_narrow else self._top_split.width()
+            total = max(total, 300)
+            if self._top_narrow:
+                sizes = [total // 3, total // 3, total - (2 * (total // 3))]
+            else:
+                sizes = [total * 3 // 10, total * 4 // 10, total - (total * 7 // 10)]
+        self._top_split.setSizes(sizes)
+
+    def _progress_moved(self, *_args) -> None:
+        if self._balancing_progress or not self._splits_ready:
+            return
+        self._progress_custom = True
+
+    def _balance_progress(self) -> None:
+        if self._progress_custom or not hasattr(self, "_progress_split"):
+            return
+        total = self._progress_split.height()
+        if total < 48:
+            return
+        notes = min(self.fontMetrics().height() * 3 + 8, max(24, total // 3))
+        notes = min(notes, total - 48)
+        self._balancing_progress = True
+        self._progress_split.blockSignals(True)
+        self._progress_split.setSizes([notes, total - notes])
+        self._progress_split.blockSignals(False)
+        self._balancing_progress = False
+
+    def _schedule_split_save(self, *_args) -> None:
+        if not self._splits_ready:
+            return
+        self._split_save.start()
+
+    def _persist_splits(self) -> None:
+        if not self._splits_ready:
+            return
+        main = self._main_split.sizes()
+        top = self._top_split.sizes()
+        if len(main) != 3 or len(top) != 3:
+            return
+        if any(item < _MAIN_SPLIT_FLOOR for item in main) or any(item < _SPLIT_FLOOR for item in top):
+            return
+        prefs = self.context.prefs
+        main_text = ",".join(str(item) for item in main)
+        top_text = ",".join(str(item) for item in top)
+        if self._top_narrow:
+            unchanged = prefs.ui_main_split == main_text and prefs.ui_top_split_narrow == top_text
+            prefs.ui_top_split_narrow = top_text
+        else:
+            unchanged = prefs.ui_main_split == main_text and prefs.ui_top_split == top_text
+            prefs.ui_top_split = top_text
+        if unchanged:
+            return
+        prefs.ui_main_split = main_text
+        prefs.save()
+
+    def _fit_module_columns(self) -> None:
+        if self._module_columns_custom or not hasattr(self, "module_table"):
+            return
+        header = self.module_table.horizontalHeader()
+        width = self.module_table.viewport().width()
+        if width < 80:
+            return
+        plan = {0: 0.22, 2: 0.20, 3: 0.14}
+        self._fitting_columns = True
+        header.blockSignals(True)
+        for index, fraction in plan.items():
+            header.resizeSection(index, max(header.minimumSectionSize(), int(width * fraction)))
+        header.blockSignals(False)
+        self._fitting_columns = False
+
+    def _module_column_resized(self, *_args) -> None:
+        if self._fitting_columns or not self._splits_ready:
+            return
+        self._module_columns_custom = True
+
     def closeEvent(self, event) -> None:  # noqa: N802 - API do Qt
         if self._busy:
             QMessageBox.warning(
@@ -881,6 +1263,8 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        self._split_save.stop()
+        self._persist_splits()
         if hasattr(self, "updates_panel"):
             self.updates_panel.shutdown()
         event.accept()

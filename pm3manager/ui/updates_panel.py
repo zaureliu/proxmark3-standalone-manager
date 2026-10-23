@@ -15,8 +15,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
+    QSplitter,
     QVBoxLayout,
+    QWidget,
 )
 
 from pm3manager.models import Environment
@@ -158,7 +162,6 @@ class UpdatesPanel(QFrame):
         self.status_label.setObjectName("muted")
         layout.addWidget(self.status_label)
 
-        columns = QHBoxLayout()
         self.iceman_version = QLabel()
         self.iceman_commit = QLabel()
         self.iceman_release = QLabel()
@@ -167,7 +170,17 @@ class UpdatesPanel(QFrame):
         self.iceman_when = QLabel()
         self.iceman_link = QLabel()
         self.iceman_extra = QLabel()
-        columns.addWidget(self._column(
+        self.prox_version = QLabel()
+        self.prox_release = QLabel()
+        self.prox_state = QLabel()
+        self.prox_when = QLabel()
+        self.prox_link = QLabel()
+        self.prox_extra = QLabel()
+        self.columns_split = QSplitter(Qt.Orientation.Horizontal)
+        self.columns_split.setObjectName("updateColumns")
+        self.columns_split.setChildrenCollapsible(False)
+        self.columns_split.setHandleWidth(8)
+        self.columns_split.addWidget(self._column(
             "Iceman",
             (
                 ("Versão local", self.iceman_version),
@@ -180,13 +193,7 @@ class UpdatesPanel(QFrame):
                 ("Observação", self.iceman_extra),
             ),
         ))
-        self.prox_version = QLabel()
-        self.prox_release = QLabel()
-        self.prox_state = QLabel()
-        self.prox_when = QLabel()
-        self.prox_link = QLabel()
-        self.prox_extra = QLabel()
-        columns.addWidget(self._column(
+        self.columns_split.addWidget(self._column(
             "ProxSpace",
             (
                 ("Versão local", self.prox_version),
@@ -197,9 +204,21 @@ class UpdatesPanel(QFrame):
                 ("Observação", self.prox_extra),
             ),
         ))
-        layout.addLayout(columns)
+        self.columns_split.setStretchFactor(0, 1)
+        self.columns_split.setStretchFactor(1, 1)
+        self._columns_narrow: bool | None = None
+        columns_scroll = QScrollArea()
+        columns_scroll.setObjectName("updateColumnsScroll")
+        columns_scroll.setWidgetResizable(True)
+        columns_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        columns_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        columns_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        columns_scroll.setWidget(self.columns_split)
+        columns_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        columns_scroll.setMinimumHeight(max(120, self.fontMetrics().height() * 5))
+        self.columns_scroll = columns_scroll
+        layout.addWidget(columns_scroll, 1)
 
-        buttons = QHBoxLayout()
         self.check_button = QPushButton("Verificar atualizações")
         self.changes_button = QPushButton("Ver alterações")
         self.github_button = QPushButton("Abrir no GitHub")
@@ -210,15 +229,48 @@ class UpdatesPanel(QFrame):
         self.github_button.clicked.connect(self._open_github)
         self.settings_button.clicked.connect(self._open_settings)
         self.instructions_button.clicked.connect(self._show_instructions)
-        for button in (
-            self.check_button,
-            self.changes_button,
-            self.github_button,
-            self.settings_button,
-            self.instructions_button,
-        ):
-            buttons.addWidget(button)
-        layout.addLayout(buttons)
+        primary = QHBoxLayout()
+        secondary = QHBoxLayout()
+        for button in (self.check_button, self.changes_button, self.github_button):
+            self._size_button(button)
+            primary.addWidget(button)
+        for button in (self.settings_button, self.instructions_button):
+            self._size_button(button)
+            secondary.addWidget(button)
+        layout.addLayout(primary)
+        layout.addLayout(secondary)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumHeight(self.check_button.minimumHeight() * 2 + self.columns_scroll.minimumHeight() + 56)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        super().resizeEvent(event)
+        self._apply_column_orientation()
+        self._fit_column_text()
+
+    def _fit_column_text(self) -> None:
+        if not hasattr(self, "columns_split"):
+            return
+        for label in self.columns_split.findChildren(QLabel):
+            if not label.wordWrap() or label.width() < 20:
+                continue
+            needed = label.heightForWidth(label.width())
+            if needed > label.minimumHeight():
+                label.setMinimumHeight(needed)
+
+    def _size_button(self, button: QPushButton) -> None:
+        button.setMinimumHeight(max(32, button.fontMetrics().height() + 16))
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def _apply_column_orientation(self) -> None:
+        if not hasattr(self, "columns_split") or self.width() < 40:
+            return
+        narrow = self.width() < 860
+        if narrow == self._columns_narrow:
+            return
+        self._columns_narrow = narrow
+        self.columns_split.setOrientation(
+            Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
+        )
 
     def _column(self, title: str, rows: tuple[tuple[str, QLabel], ...]) -> QFrame:
         frame = QFrame()
@@ -231,9 +283,19 @@ class UpdatesPanel(QFrame):
         for caption, label in rows:
             label.setWordWrap(True)
             label.setTextFormat(Qt.TextFormat.PlainText)
-            label.setObjectName("muted")
-            layout.addWidget(QLabel(caption))
-            layout.addWidget(label)
+            label.setObjectName("value")
+            row = QWidget()
+            row.setObjectName("checkRow")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(8)
+            cap = QLabel(caption)
+            cap.setObjectName("muted")
+            cap.setMinimumWidth(min(148, max(96, cap.sizeHint().width())))
+            cap.setAlignment(Qt.AlignmentFlag.AlignTop)
+            row_layout.addWidget(cap, 0, Qt.AlignmentFlag.AlignTop)
+            row_layout.addWidget(label, 1)
+            layout.addWidget(row)
         layout.addStretch(1)
         return frame
 

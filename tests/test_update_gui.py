@@ -359,8 +359,10 @@ def test_falha_do_worker_e_encerramento_com_a_janela(qapp, isolated_data, monkey
 
     window = MainWindow(context)
     try:
-        assert window.minimumSize().width() == 980
-        assert window.minimumSize().height() == 720
+        assert window.minimumSize().width() == window.WINDOW_MIN_WIDTH
+        assert window.minimumSize().height() == window.WINDOW_MIN_HEIGHT
+        assert window.minimumSize().width() < 980
+        assert window.minimumSize().height() < 720
         titles = [label.text() for label in window.findChildren(QLabel)]
         assert "Atualizações" in titles
         for caption in ("Verificar atualizações", "Ver alterações", "Abrir no GitHub", "Configurações"):

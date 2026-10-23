@@ -60,6 +60,9 @@ class Preferences:
     updates_enabled: bool = True
     updates_interval_minutes: int = 60
     updates_notify: bool = True
+    ui_main_split: str = ""
+    ui_top_split: str = ""
+    ui_top_split_narrow: str = ""
 
     @staticmethod
     def path() -> Path:
@@ -99,6 +102,9 @@ class Preferences:
             "detected_firmware_kind",
             "selected_serial",
             "last_module_id",
+            "ui_main_split",
+            "ui_top_split",
+            "ui_top_split_narrow",
         ):
             setattr(prefs, name, str(getattr(prefs, name) or ""))
         if stored_flash:

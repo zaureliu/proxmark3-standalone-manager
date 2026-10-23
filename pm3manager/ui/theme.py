@@ -20,8 +20,21 @@ QLabel#title {
     font-weight: 650;
     background: transparent;
 }
+QLabel#muted, QLabel#hint, QLabel#value, QLabel#section, QLabel#checkText {
+    background: transparent;
+}
 QLabel#muted, QLabel#hint {
     color: #a8b0bb;
+}
+QLabel#section {
+    color: #d5dbe3;
+    font-weight: 650;
+    padding-top: 6px;
+}
+QLabel#checkText, QLabel#value {
+    color: #e6e8eb;
+}
+QWidget#checkRow {
     background: transparent;
 }
 QLabel#statusPill {
@@ -39,6 +52,11 @@ QLineEdit, QComboBox, QPlainTextEdit, QTextEdit, QTextBrowser, QListWidget, QTab
 }
 QTableWidget {
     gridline-color: #2c3340;
+    alternate-background-color: #1a1f27;
+}
+QTableWidget::item:selected {
+    background: #2f6fed;
+    color: #f4f7fb;
 }
 QHeaderView::section {
     background: #1c212a;
@@ -82,8 +100,22 @@ QCheckBox {
     background: transparent;
     spacing: 8px;
 }
-QSplitter::handle {
+QSplitter::handle:horizontal {
+    width: 8px;
     background: #171a1f;
+}
+QSplitter::handle:vertical {
+    height: 8px;
+    background: #171a1f;
+}
+QFrame#card QScrollArea {
+    background: transparent;
+    border: none;
+}
+QFrame#card QScrollArea > QWidget > QWidget,
+QFrame#card QWidget#qt_scrollarea_viewport {
+    background: transparent;
+    border: none;
 }
 """
 

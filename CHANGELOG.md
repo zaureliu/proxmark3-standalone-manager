@@ -11,6 +11,10 @@ commit. This branch does not create the tag.
 
 ### Fixed
 
+- The main window keeps the device, module, update, operation, and progress
+  panels readable when the window is resized. Hardware text no longer paints
+  over the SPI and `PLATFORM_SIZE` confirmations. The module list prefers a
+  vertical scrollbar, and the update panel is no longer capped at a thin strip.
 - **Commit local** shows the Git HEAD of the selected checkout. The third
   field of `common/default_version_pm3.c` stays labeled as a source
   fingerprint and is not presented as that commit.
