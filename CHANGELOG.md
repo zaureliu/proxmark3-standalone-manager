@@ -18,6 +18,8 @@ The annotated tag `v1.0.0` identifies the published V1 commit
 - Operation buttons stay outside any scroll area. The module description
   scrolls on its own. The update panel stays compact, and its full details
   open in a separate dialog. Only the progress log scrolls.
+- Layout tests build their own module list. They do not read the generated
+  `catalog/modulos.json`, which is not part of the published tree.
 - **Commit local** shows the Git HEAD of the selected checkout. The third
   field of `common/default_version_pm3.c` stays labeled as a source
   fingerprint and is not presented as that commit.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -21,29 +20,36 @@ from pm3manager.workflow.lock import OperationLock
 from tests.fakes import make_env, module
 
 
-def _catalog_modules() -> list[Module]:
-    raw = json.loads((project_root() / "catalog" / "modulos.json").read_text(encoding="utf-8"))
-    modules = []
-    for item in raw:
-        modules.append(
-            Module(
-                id=item["id"],
-                name=item["nome"],
-                description=item["descricao"],
-                frequency=item["frequencia"],
-                category=Category(item["categoria"]),
-                compatibility=Compatibility(item["compatibilidade"]),
-                hardware_requirements=item.get("requisitos", ""),
-                limitations=tuple(item.get("limitacoes") or ()),
-                hal_description="",
-                doc_hardware="",
-                requires_flash=bool(item.get("requer_flash", False)),
-                requires_bt=bool(item.get("requer_bt", False)),
-                requires_smartcard=bool(item.get("requer_smartcard", False)),
-                rdv4_only=bool(item.get("exclusivo_rdv4", False)),
-                source_file=item.get("fonte", ""),
-            )
+def _layout_modules() -> list[Module]:
+    """Lista sintética. catalog/modulos.json é gerado e não faz parte da árvore publicada."""
+
+    def item(module_id: str, category: Category) -> Module:
+        sample = module(module_id)
+        return Module(
+            id=sample.id,
+            name=sample.name,
+            description=sample.description,
+            frequency="HF" if category is Category.HF else "LF",
+            category=category,
+            compatibility=sample.compatibility,
+            hardware_requirements=sample.hardware_requirements,
+            limitations=sample.limitations,
+            hal_description=sample.hal_description,
+            doc_hardware=sample.doc_hardware,
+            requires_flash=sample.requires_flash,
+            requires_bt=sample.requires_bt,
+            requires_smartcard=sample.requires_smartcard,
+            rdv4_only=sample.rdv4_only,
+            source_file=sample.source_file,
         )
+
+    modules = [
+        item("HF_MATTYRUN", Category.HF),
+        item("LF_SAMYRUN", Category.LF),
+        item("HF_REBLAY", Category.HF),
+    ]
+    modules.extend(item(f"HF_LAYOUT_{index:02d}", Category.HF) for index in range(20))
+    modules.extend(item(f"LF_LAYOUT_{index:02d}", Category.LF) for index in range(18))
     return modules
 
 
@@ -58,7 +64,7 @@ def _window(isolated_data, monkeypatch, modules=None):
     context = AppContext(
         env=env,
         prefs=prefs,
-        modules=modules if modules is not None else _catalog_modules(),
+        modules=modules if modules is not None else _layout_modules(),
         shell=ProxSpaceShell(env, isolated_data / "work"),
         cache=FirmwareCache(isolated_data / "firmware-cache"),
         lock=OperationLock(),
@@ -220,7 +226,7 @@ def test_textos_de_hardware_nao_sobrepoem_as_confirmacoes(qapp, isolated_data, m
 
 
 def test_lista_de_modulos_prioriza_rolagem_vertical(qapp, isolated_data, monkeypatch):
-    modules = _catalog_modules()
+    modules = _layout_modules()
     assert len(modules) >= 39
     assert any(item.id == "HF_MATTYRUN" for item in modules)
     window = _window(isolated_data, monkeypatch, modules=modules)
@@ -272,7 +278,7 @@ def test_lista_de_modulos_prioriza_rolagem_vertical(qapp, isolated_data, monkeyp
 
 
 def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data, monkeypatch):
-    modules = _catalog_modules()
+    modules = _layout_modules()
     window = _window(isolated_data, monkeypatch, modules=modules)
     checks = []
 
@@ -371,7 +377,7 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
 
 
 def test_controles_operacionais_permanecem_visiveis_apos_rolagem(qapp, isolated_data, monkeypatch):
-    modules = _catalog_modules()
+    modules = _layout_modules()
     window = _window(isolated_data, monkeypatch, modules=modules)
     try:
         for width, height in ((1280, 720), (1366, 768), (1920, 1080)):
