@@ -1,8 +1,7 @@
 # Changelog
 
 The version number in `pm3manager/__init__.py` and `pyproject.toml` is 1.0.0.
-Nothing in this tree has been pushed to a public remote. Dates below are
-the dates the work was prepared, not publication dates.
+Dates below are the dates the work was prepared, not publication dates.
 
 ## Unreleased
 
@@ -10,6 +9,10 @@ the dates the work was prepared, not publication dates.
 
 - `.gitignore` no longer ignores `pm3manager/build`. That package is the
   compiler used by the application, and without it the CI import fails.
+- Pytest can start on a clean checkout. `--basetemp=var/pytest` requires
+  the gitignored `var` directory, which Git does not create. The test
+  configuration creates that parent before pytest does, and `var` stays
+  out of the published tree.
 
 ### Changed
 

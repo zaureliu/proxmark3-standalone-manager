@@ -278,6 +278,49 @@ def test_lock_consultado_nao_libera_o_dono():
     assert lock.locked is False
 
 
+def test_basetemp_sem_pai_nao_cria_o_diretorio_do_pytest(tmp_path):
+    from tests.conftest import ensure_basetemp_parent
+
+    leaf = tmp_path / "ausente" / "pytest"
+    ensure_basetemp_parent(leaf)
+    assert leaf.parent.is_dir()
+    assert not leaf.exists()
+    ensure_basetemp_parent(None)
+    ensure_basetemp_parent("")
+
+
+def test_checkout_limpo_cria_o_pai_do_basetemp(tmp_path):
+    import subprocess
+    import sys
+
+    leaf = tmp_path / "ausente" / "pytest"
+    env = os.environ.copy()
+    env.pop("PYTEST_CURRENT_TEST", None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_portability_and_safety.py::test_caminho_com_aspas_ou_e_comercial_e_recusado",
+            "-q",
+            "--basetemp",
+            os.fspath(leaf),
+            "-p",
+            "no:cacheprovider",
+            "--override-ini",
+            "addopts=",
+        ],
+        cwd=project_root(),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+    assert leaf.is_dir()
+
+
 def test_ok210_nao_virou_diagnostico_de_rdv4():
     partial = present_result(
         OperationResult(True, "OK210", Msg.FLASH_PARTIAL_CHECK, "flash_partial_validation")

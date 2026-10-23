@@ -6,6 +6,21 @@ import pytest
 from pm3manager.paths import project_root
 
 
+def ensure_basetemp_parent(basetemp) -> None:
+    """Cria só o diretório pai de --basetemp.
+
+    O pytest chama mkdir sem parents. Em um checkout limpo, var/ não existe
+    porque esse diretório é local e não entra no Git.
+    """
+    if not basetemp:
+        return
+    Path(os.path.abspath(os.fspath(basetemp))).parent.mkdir(parents=True, exist_ok=True)
+
+
+def pytest_configure(config):
+    ensure_basetemp_parent(getattr(config.option, "basetemp", None))
+
+
 def _watched_paths() -> tuple[Path, ...]:
     paths = [
         project_root() / "var" / "logs" / "app.log",
