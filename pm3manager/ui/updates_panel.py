@@ -162,6 +162,17 @@ class UpdatesPanel(QFrame):
         self.status_label.setObjectName("muted")
         layout.addWidget(self.status_label)
 
+        summary = QHBoxLayout()
+        summary.setSpacing(12)
+        self.iceman_summary = QLabel("Iceman: —")
+        self.prox_summary = QLabel("ProxSpace: —")
+        for label in (self.iceman_summary, self.prox_summary):
+            label.setWordWrap(True)
+            label.setObjectName("value")
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            summary.addWidget(label, 1)
+        layout.addLayout(summary)
+
         self.iceman_version = QLabel()
         self.iceman_commit = QLabel()
         self.iceman_release = QLabel()
@@ -215,37 +226,119 @@ class UpdatesPanel(QFrame):
         columns_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         columns_scroll.setWidget(self.columns_split)
         columns_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        columns_scroll.setMinimumHeight(max(120, self.fontMetrics().height() * 5))
+        columns_scroll.setMinimumHeight(0)
+        columns_scroll.setMaximumHeight(150)
         self.columns_scroll = columns_scroll
-        layout.addWidget(columns_scroll, 1)
 
         self.check_button = QPushButton("Verificar atualizações")
+        self.details_button = QPushButton("Ver detalhes")
         self.changes_button = QPushButton("Ver alterações")
         self.github_button = QPushButton("Abrir no GitHub")
         self.settings_button = QPushButton("Configurações")
         self.instructions_button = QPushButton("Ver instruções de atualização")
         self.check_button.clicked.connect(self.check_now)
+        self.details_button.clicked.connect(self._toggle_details)
         self.changes_button.clicked.connect(self._show_changes)
         self.github_button.clicked.connect(self._open_github)
         self.settings_button.clicked.connect(self._open_settings)
         self.instructions_button.clicked.connect(self._show_instructions)
         primary = QHBoxLayout()
-        secondary = QHBoxLayout()
-        for button in (self.check_button, self.changes_button, self.github_button):
+        for button in (self.check_button, self.details_button):
             self._size_button(button)
             primary.addWidget(button)
-        for button in (self.settings_button, self.instructions_button):
+        layout.addLayout(primary)
+
+        self._details = QWidget()
+        self._details.setObjectName("updateDetails")
+        details_layout = QVBoxLayout(self._details)
+        details_layout.setContentsMargins(0, 4, 0, 0)
+        details_layout.setSpacing(6)
+        details_layout.addWidget(columns_scroll, 1)
+        secondary = QHBoxLayout()
+        extra = QHBoxLayout()
+        for button in (self.changes_button, self.github_button, self.settings_button):
             self._size_button(button)
             secondary.addWidget(button)
-        layout.addLayout(primary)
-        layout.addLayout(secondary)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setMinimumHeight(self.check_button.minimumHeight() * 2 + self.columns_scroll.minimumHeight() + 56)
+        for button in (self.instructions_button,):
+            self._size_button(button)
+            extra.addWidget(button)
+        details_layout.addLayout(secondary)
+        details_layout.addLayout(extra)
+        self._details_open = False
+        self._details_dialog: QDialog | None = None
+        self._capping = False
+        self._details.setVisible(False)
+        layout.addWidget(self._details)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self._apply_height_cap()
+
+    def _toggle_details(self) -> None:
+        if self._details_dialog is not None:
+            self._details_dialog.close()
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Detalhes das atualizações")
+        dialog.resize(860, 560)
+        dialog_layout = QVBoxLayout(dialog)
+        self._details.setVisible(True)
+        dialog_layout.addWidget(self._details)
+        self.columns_scroll.setMinimumHeight(180)
+        self.columns_scroll.setMaximumHeight(16777215)
+        self._details_open = True
+        self._details_dialog = dialog
+        dialog.finished.connect(self._hide_details_dialog)
+        dialog.show()
+
+    def _hide_details_dialog(self) -> None:
+        self._details_open = False
+        self._details_dialog = None
+        self.columns_scroll.setMinimumHeight(0)
+        self.columns_scroll.setMaximumHeight(150)
+        self._details.setParent(self)
+        layout = self.layout()
+        if layout is not None:
+            layout.addWidget(self._details)
+        self._details.setVisible(False)
+        self._apply_height_cap()
+
+    def _collapsed_height(self) -> int:
+        line = max(16, self.fontMetrics().height())
+        button = max(32, line + 16)
+        return 16 + line + line + line + button + 20
+
+    def _preferred_panel_height(self) -> int:
+        layout = self.layout()
+        if layout is None:
+            return self._collapsed_height()
+        width = self.width() if self.width() > 80 else 720
+        if layout.hasHeightForWidth():
+            return max(layout.heightForWidth(width), 96)
+        return max(layout.sizeHint().height(), 96)
+
+    def _apply_height_cap(self) -> None:
+        if self._capping or not hasattr(self, "_details"):
+            return
+        if self._details_dialog is not None:
+            return
+        self._capping = True
+        try:
+            self._details.setVisible(False)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+            collapsed = self._collapsed_height()
+            cap = max(96, min(self._preferred_panel_height(), collapsed))
+            self.setMinimumHeight(cap)
+            self.setMaximumHeight(cap)
+        finally:
+            self._capping = False
+        self.updateGeometry()
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - API do Qt
         super().resizeEvent(event)
         self._apply_column_orientation()
         self._fit_column_text()
+        if not self._capping:
+            self._apply_height_cap()
 
     def _fit_column_text(self) -> None:
         if not hasattr(self, "columns_split"):
@@ -320,6 +413,24 @@ class UpdatesPanel(QFrame):
         self.prox_link.setText(report.proxspace.web_url)
         parts = [report.iceman.message, report.proxspace.message]
         self.status_label.setText("  ·  ".join(part for part in parts if part))
+        self.iceman_summary.setText(self._essential_line("Iceman", report.iceman))
+        self.prox_summary.setText(self._essential_line("ProxSpace", report.proxspace))
+        self.iceman_summary.setToolTip(self._essential_tip(report.iceman))
+        self.prox_summary.setToolTip(self._essential_tip(report.proxspace))
+        self._apply_height_cap()
+
+    def _essential_line(self, title: str, report: ProviderReport) -> str:
+        version = report.local.version_label or UNKNOWN_VERSION
+        state = report.message or "sem estado"
+        return f"{title}: {version} · {state}"
+
+    def _essential_tip(self, report: ProviderReport) -> str:
+        lines = [
+            self._essential_line(report.title, report),
+            f"Verificação: {report.checked_at or '—'}",
+            report.web_url,
+        ]
+        return "\n".join(line for line in lines if line)
 
     def _fill(self, report, version, commit, release, remote, state, when, extra) -> None:
         version.setText(report.local.version_label or UNKNOWN_VERSION)

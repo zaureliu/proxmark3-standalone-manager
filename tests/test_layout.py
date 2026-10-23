@@ -7,9 +7,9 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QMessageBox, QScrollArea
+from PySide6.QtWidgets import QLabel, QMessageBox, QScrollArea, QScrollBar
 
 from pm3manager.cache.store import FirmwareCache
 from pm3manager.models import Category, Compatibility, Module
@@ -121,6 +121,47 @@ def _assert_wrapped(labels) -> None:
     assert not short, "; ".join(short)
 
 
+def _ancestor_scroll(widget) -> QScrollArea | None:
+    parent = widget.parentWidget()
+    while parent is not None:
+        if isinstance(parent, QScrollArea):
+            return parent
+        parent = parent.parentWidget()
+    return None
+
+
+def _fully_visible(widget, window) -> bool:
+    if not widget.isVisible() or widget.width() < 8 or widget.height() < 8:
+        return False
+    if _ancestor_scroll(widget) is not None:
+        return False
+    return _inside(widget, window)
+
+
+def _inside(widget, host) -> bool:
+    if not widget.isVisible() or host is None or not host.isVisible():
+        return False
+    rect = QRect(widget.mapToGlobal(QPoint(0, 0)), widget.size())
+    bounds = QRect(host.mapToGlobal(QPoint(0, 0)), host.size())
+    return bounds.adjusted(-1, -1, 1, 1).contains(rect)
+
+
+def _scroll_panels(window, qapp) -> None:
+    bars: list[QScrollBar] = []
+    for area in window.findChildren(QScrollArea):
+        bars.append(area.verticalScrollBar())
+    bars.append(window.module_table.verticalScrollBar())
+    bars.append(window.module_table.horizontalScrollBar())
+    bars.append(window.details.verticalScrollBar())
+    bars.append(window.log_view.verticalScrollBar())
+    panel = window.updates_panel
+    if panel._details_open:
+        bars.append(panel.columns_scroll.verticalScrollBar())
+    for bar in bars:
+        bar.setValue(bar.maximum())
+    qapp.processEvents()
+
+
 def test_janela_pequena_mantem_paineis_e_rolagem(qapp, isolated_data, monkeypatch):
     window = _window(isolated_data, monkeypatch)
     try:
@@ -129,8 +170,9 @@ def test_janela_pequena_mantem_paineis_e_rolagem(qapp, isolated_data, monkeypatc
         _show(window, qapp, 800, 560)
         assert window._top_split.orientation() == Qt.Orientation.Vertical
         assert window.updates_panel.isVisible()
-        assert window.updates_panel.maximumHeight() > 2000
-        assert window.updates_panel.height() >= 120
+        assert window.updates_panel._details_open is False
+        assert window.updates_panel.maximumHeight() < 320
+        assert window.updates_panel.height() >= 96
         device_bar = window._device_scroll.verticalScrollBar()
         assert device_bar.maximum() > 0 or window._device_scroll.widget().height() > window._device_scroll.viewport().height()
         window._device_scroll.ensureWidgetVisible(window.spi_check)
@@ -179,11 +221,12 @@ def test_textos_de_hardware_nao_sobrepoem_as_confirmacoes(qapp, isolated_data, m
 
 def test_lista_de_modulos_prioriza_rolagem_vertical(qapp, isolated_data, monkeypatch):
     modules = _catalog_modules()
-    assert len(modules) == 41
+    assert len(modules) >= 39
+    assert any(item.id == "HF_MATTYRUN" for item in modules)
     window = _window(isolated_data, monkeypatch, modules=modules)
     try:
         _show(window, qapp, 1280, 720)
-        assert window.module_table.rowCount() == 41
+        assert window.module_table.rowCount() == len(modules)
         assert window.module_table.horizontalScrollBar().maximum() == 0
         names = []
         for row in range(window.module_table.rowCount()):
@@ -240,11 +283,22 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
     window.updates_panel.service.check = forbidden
     try:
         _show(window, qapp, 1366, 768)
-        assert window.updates_panel.height() >= 140
-        for caption in ("Iceman", "ProxSpace", "Atualizações"):
+        assert window.updates_panel._details_open is False
+        assert window.updates_panel.height() < window._top_split.height()
+        assert window.updates_panel.height() >= 96
+        for caption in ("Atualizações",):
             assert any(label.text() == caption for label in window.findChildren(QLabel))
+        assert window.updates_panel.iceman_summary.text().startswith("Iceman:")
+        assert window.updates_panel.prox_summary.text().startswith("ProxSpace:")
+        assert window.updates_panel.check_button.isVisible()
+        assert window.updates_panel.details_button.isVisible()
+        assert window.updates_panel.changes_button.isVisible() is False
+        window.updates_panel.details_button.click()
+        qapp.processEvents()
+        dialog = window.updates_panel._details_dialog
+        assert dialog is not None and dialog.isVisible()
+        assert window.updates_panel._details_open is True
         for caption in (
-            "Verificar atualizações",
             "Ver alterações",
             "Abrir no GitHub",
             "Configurações",
@@ -252,7 +306,12 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
         ):
             button = next(item for item in window.updates_panel.findChildren(type(window.apply_button)) if item.text() == caption)
             assert button.minimumHeight() >= 32
-            assert button.isVisible()
+            assert _inside(button, dialog)
+            assert _ancestor_scroll(button) is None
+        assert _inside(window.apply_button, window._operation_frame)
+        window.updates_panel.details_button.click()
+        qapp.processEvents()
+        assert window.updates_panel._details_open is False
         for button in (
             window.apply_button,
             window.rebuild_button,
@@ -262,20 +321,19 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
         ):
             assert button.minimumHeight() >= 32
             assert button.text()
+            assert _inside(button, window._operation_frame)
+            assert not _inside(button, window.updates_panel)
         assert window.apply_button.text() == "Aplicar módulo"
-        assert "Recompilar e Verificar dispositivo não gravam." in window._operation_scroll.widget().findChild(QLabel).text() or any(
-            "não gravam" in label.text() for label in window._operation_scroll.findChildren(QLabel)
-        )
+        assert "Recompilar e Verificar dispositivo não gravam." in window._authorize_hint.text()
+        assert _ancestor_scroll(window.authorize_check) is None
+        assert _fully_visible(window.authorize_check, window)
         _assert_no_overlap(
             [
                 (window.apply_button, window.rebuild_button, "aplicar/recompilar"),
                 (window.rebuild_button, window.verify_button, "recompilar/verificar"),
-                (window.verify_button, window.client_button, "verificar/cliente"),
-                (window.client_button, window.logs_button, "cliente/logs"),
+                (window.authorize_check, window.apply_button, "autorizar/aplicar"),
             ]
         )
-        window._operation_scroll.ensureWidgetVisible(window.apply_button)
-        qapp.processEvents()
         assert window.context.prefs.flash_autorizado is False
         assert window.authorize_check.isChecked() is False
         window.search_box.setText("REBLAY")
@@ -297,14 +355,70 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
                 assert window._selected_module() is not None
                 assert window._selected_module().id == chosen
         assert checks == []
-        assert window.log_view.minimumHeight() >= 64
-        assert window._progress_split.sizes()[1] >= 48
-        assert isinstance(window._progress_scroll, QScrollArea)
+        assert window.log_view.minimumHeight() >= 48
+        assert _ancestor_scroll(window.stage_label) is None
+        assert _ancestor_scroll(window.progress) is None
+        assert _ancestor_scroll(window.summary_label) is None
+        assert _ancestor_scroll(window.log_view) is None
+        assert window.findChildren(QScrollArea, "pageScroll") == []
         window._poll.stop()
         window.close()
         assert window.updates_panel._closed is True
         assert window.updates_panel._timer.isActive() is False
         assert window.updates_panel._worker is None or window.updates_panel._worker.isRunning() is False
+    finally:
+        _close(window)
+
+
+def test_controles_operacionais_permanecem_visiveis_apos_rolagem(qapp, isolated_data, monkeypatch):
+    modules = _catalog_modules()
+    window = _window(isolated_data, monkeypatch, modules=modules)
+    try:
+        for width, height in ((1280, 720), (1366, 768), (1920, 1080)):
+            _show(window, qapp, width, height)
+            assert window._top_split.orientation() == Qt.Orientation.Horizontal
+            window.search_box.setText("")
+            window.category_combo.setCurrentText("Todas")
+            qapp.processEvents()
+            last = window.module_table.rowCount() - 1
+            window.module_table.selectRow(last)
+            qapp.processEvents()
+            assert window._selected_module() is not None
+            for _index in range(30):
+                window._append_log(f"historico {_index} em {width}x{height}")
+            window.details.setPlainText("Descricao longa do modulo.\n" * 40)
+            qapp.processEvents()
+            _scroll_panels(window, qapp)
+            controls = (
+                window.apply_button,
+                window.rebuild_button,
+                window.verify_button,
+                window.client_button,
+                window.logs_button,
+            )
+            missing = [button.text() for button in controls if not _inside(button, window._operation_frame)]
+            assert not missing, f"{width}x{height}: botoes fora do cartao ou da rolagem: {missing}"
+            assert all(not _inside(button, window.updates_panel) for button in controls)
+            assert _inside(window.authorize_check, window._operation_frame)
+            assert _inside(window.stage_label, window._main_split.widget(2))
+            assert _inside(window.updates_panel.check_button, window.updates_panel)
+            assert _ancestor_scroll(window.block_reason) is None
+            chosen = window._selected_module().id
+            window.updates_panel.details_button.click()
+            qapp.processEvents()
+            _scroll_panels(window, qapp)
+            dialog = window.updates_panel._details_dialog
+            assert dialog is not None and window.updates_panel._details_open is True
+            assert _inside(window.apply_button, window._operation_frame)
+            assert _inside(window.rebuild_button, window._operation_frame)
+            assert _inside(window.verify_button, window._operation_frame)
+            assert _inside(window.updates_panel.check_button, window.updates_panel)
+            assert _inside(window.updates_panel.changes_button, dialog)
+            assert _ancestor_scroll(window.updates_panel.changes_button) is None
+            assert window._selected_module().id == chosen
+            window.updates_panel.details_button.click()
+            qapp.processEvents()
+            assert window.updates_panel._checking is False
     finally:
         _close(window)
 
@@ -388,8 +502,12 @@ try:
             raise SystemExit(f"texto cortado em {width}x{height}: {hardware.height()} < {needed}")
         if window.spi_check.accessibleName() == "":
             raise SystemExit("checkbox da flash sem nome")
-        if window.updates_panel.height() < 100:
+        if window.updates_panel.height() < 96:
             raise SystemExit(f"atualizacoes baixas: {window.updates_panel.height()}")
+        if window.updates_panel.maximumHeight() > 320 and not window.updates_panel._details_open:
+            raise SystemExit("atualizacoes abertas por padrao")
+        if window.apply_button.parentWidget() is None:
+            raise SystemExit("botao aplicar sem pai")
         if window.module_table.rowCount() != 2:
             raise SystemExit("modulos sumiram")
 finally:

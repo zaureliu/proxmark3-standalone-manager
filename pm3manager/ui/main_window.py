@@ -54,6 +54,30 @@ from pm3manager.workflow.service import ManagerService, build_config, incompatib
 
 _SPLIT_FLOOR = 48
 _MAIN_SPLIT_FLOOR = 80
+_AUTHORIZE_TEXT = (
+    "Desmarcada, Aplicar módulo só compila. Marcada, essa operação grava a fullimage "
+    "real com pm3-flash-fullimage e não pede outra confirmação. A autorização não é "
+    "salva: ela acaba ao terminar, falhar ou ser desmarcada, e também ao abrir o aplicativo. "
+    "Recompilar e Verificar dispositivo não gravam."
+)
+
+
+class _CompactBrowser(QTextBrowser):
+    """A descrição do módulo rola aqui e não empurra os botões."""
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, 48)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(220, 72)
+
+
+class _CompactScroll(QScrollArea):
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, 48)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(220, 72)
 
 
 class _HeightBody(QWidget):
@@ -94,8 +118,8 @@ def _parse_split_sizes(text: str, count: int, floor: int) -> list[int] | None:
     return values
 
 
-def _scrollable(body: QWidget) -> QScrollArea:
-    scroll = QScrollArea()
+def _scrollable(body: QWidget, *, compact: bool = False) -> QScrollArea:
+    scroll = _CompactScroll() if compact else QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -154,6 +178,76 @@ def _wrapping_check(checkbox: QCheckBox, text: str) -> QWidget:
     return row
 
 
+class _WrappingButtons(QWidget):
+    """Distribui os botões em linhas sem reduzir a largura abaixo do texto."""
+
+    def __init__(self, buttons: list[QPushButton], parent=None) -> None:
+        super().__init__(parent)
+        self._buttons = buttons
+        self._gap = 6
+        self._guard = False
+        for button in buttons:
+            button.setParent(self)
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 - API do Qt
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - API do Qt
+        return self._arrange(width, apply=False)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, self.heightForWidth(max(self.width(), 180)))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        super().resizeEvent(event)
+        self._arrange(self.width(), apply=True)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        super().showEvent(event)
+        self._arrange(max(self.width(), 1), apply=True)
+
+    def _arrange(self, width: int, apply: bool) -> int:
+        width = max(int(width), 1)
+        gap = self._gap
+        rows: list[list[tuple[QPushButton, int, int]]] = []
+        current: list[tuple[QPushButton, int, int]] = []
+        used = 0
+        for button in self._buttons:
+            hint = button.sizeHint()
+            bw = max(button.minimumSizeHint().width(), hint.width(), 32)
+            bh = max(button.minimumHeight(), hint.height(), 32)
+            if current and used + gap + bw > width:
+                rows.append(current)
+                current = []
+                used = 0
+            current.append((button, bw, bh))
+            used += (gap if used else 0) + bw
+        if current:
+            rows.append(current)
+        y = 0
+        for row in rows:
+            row_h = max(item[2] for item in row)
+            natural = sum(item[1] for item in row) + gap * (len(row) - 1)
+            extra = max(0, width - natural)
+            share = extra // len(row)
+            x = 0
+            for button, bw, _bh in row:
+                span = min(width, bw + share)
+                if apply:
+                    button.setGeometry(x, y, span, row_h)
+                x += span + gap
+            y += row_h + (gap if row is not rows[-1] else 0)
+        height = max(y, 32)
+        if apply and not self._guard and self.minimumHeight() != height:
+            self._guard = True
+            self.setMinimumHeight(height)
+            self.updateGeometry()
+            self._guard = False
+        return height
+
+
 class MainWindow(QMainWindow):
     WINDOW_MIN_WIDTH = 760
     WINDOW_MIN_HEIGHT = 520
@@ -185,8 +279,7 @@ class MainWindow(QMainWindow):
         self._module_columns_custom = False
         self._fitting_columns = False
         self._fitting_text = False
-        self._balancing_progress = False
-        self._progress_custom = False
+        self._clamping = False
         self._split_save = QTimer(self)
         self._split_save.setSingleShot(True)
         self._split_save.setInterval(400)
@@ -237,13 +330,12 @@ class MainWindow(QMainWindow):
         self._top_split.setStretchFactor(0, 3)
         self._top_split.setStretchFactor(1, 4)
         self._top_split.setStretchFactor(2, 3)
-        self._top_split.setMinimumHeight(190)
+        self._top_split.setMinimumHeight(0)
 
         self.updates_panel = UpdatesPanel(self.context, self)
         self.updates_panel.setMinimumWidth(0)
 
         progress = self._progress_card()
-        progress.setMinimumHeight(180)
         self._main_split = QSplitter(Qt.Orientation.Vertical)
         self._main_split.setObjectName("mainSplit")
         self._main_split.setChildrenCollapsible(False)
@@ -251,14 +343,12 @@ class MainWindow(QMainWindow):
         self._main_split.addWidget(self._top_split)
         self._main_split.addWidget(self.updates_panel)
         self._main_split.addWidget(progress)
-        for index, stretch in enumerate((34, 42, 24)):
+        for index, stretch in enumerate((62, 16, 22)):
             self._main_split.setStretchFactor(index, stretch)
             self._main_split.setCollapsible(index, False)
         self._main_split.splitterMoved.connect(self._schedule_split_save)
         self._top_split.splitterMoved.connect(self._schedule_split_save)
-        self._page_scroll = _scrollable(self._main_split)
-        self._page_scroll.setObjectName("pageScroll")
-        root.addWidget(self._page_scroll, 1)
+        root.addWidget(self._main_split, 1)
 
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
@@ -411,18 +501,34 @@ class MainWindow(QMainWindow):
 
     def _operation_card(self) -> QFrame:
         frame, layout = self._card("Operações")
-        body = _HeightBody()
-        body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(0, 0, 2, 0)
-        body_layout.setSpacing(8)
-        self.details = QTextBrowser()
+        self._operation_frame = frame
+        self.details = _CompactBrowser()
+        self.details.setObjectName("operationDetails")
         self.details.setOpenExternalLinks(False)
-        self.details.setMinimumHeight(72)
+        self.details.setMinimumHeight(36)
         self.details.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        body_layout.addWidget(self.details, 1)
+        details_body = _HeightBody()
+        details_layout = QVBoxLayout(details_body)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(6)
+        self._authorize_detail = QLabel(_AUTHORIZE_TEXT)
+        self._authorize_detail.setObjectName("hint")
+        self._authorize_detail.setWordWrap(True)
+        details_layout.addWidget(self._authorize_detail)
+        details_layout.addWidget(self.details, 1)
+        self._operation_details_scroll = _scrollable(details_body, compact=True)
+        self._operation_details_scroll.setObjectName("operationDetailsScroll")
+        self._operation_details_scroll.setMinimumHeight(36)
+        layout.addWidget(self._operation_details_scroll, 1)
+
+        fixed = _HeightBody()
+        fixed.setObjectName("operationFixed")
+        fixed_layout = QVBoxLayout(fixed)
+        fixed_layout.setContentsMargins(0, 4, 0, 0)
+        fixed_layout.setSpacing(6)
         self.confirm_uncertain = QCheckBox()
         self.confirm_uncertain.toggled.connect(self._uncertain_toggled)
-        body_layout.addWidget(_wrapping_check(
+        fixed_layout.addWidget(_wrapping_check(
             self.confirm_uncertain,
             "Confirmo os requisitos deste módulo neste Proxmark3",
         ))
@@ -430,19 +536,18 @@ class MainWindow(QMainWindow):
         self.authorize_check.setChecked(False)
         self.context.prefs.flash_autorizado = False
         self.authorize_check.toggled.connect(self._authorize_toggled)
-        body_layout.addWidget(_wrapping_check(
+        fixed_layout.addWidget(_wrapping_check(
             self.authorize_check,
             "Autorizar gravação real da fullimage no próximo Aplicar módulo",
         ))
-        authorize_hint = QLabel(
-            "Desmarcada, Aplicar módulo só compila. Marcada, essa operação grava a fullimage "
-            "real com pm3-flash-fullimage e não pede outra confirmação. A autorização não é "
-            "salva: ela acaba ao terminar, falhar ou ser desmarcada, e também ao abrir o aplicativo. "
-            "Recompilar e Verificar dispositivo não gravam."
+        self._authorize_hint = QLabel(
+            "Desmarcada, Aplicar módulo só compila. Marcada, grava a fullimage real nesta "
+            "operação e a autorização não é salva. Recompilar e Verificar dispositivo não gravam."
         )
-        authorize_hint.setObjectName("hint")
-        authorize_hint.setWordWrap(True)
-        body_layout.addWidget(authorize_hint)
+        self._authorize_hint.setObjectName("hint")
+        self._authorize_hint.setWordWrap(True)
+        self._authorize_hint.setToolTip(_AUTHORIZE_TEXT)
+        fixed_layout.addWidget(self._authorize_hint)
         self.apply_button = QPushButton("Aplicar módulo")
         self.apply_button.setObjectName("primary")
         self.rebuild_button = QPushButton("Recompilar")
@@ -454,23 +559,24 @@ class MainWindow(QMainWindow):
         self.verify_button.clicked.connect(self._verify)
         self.client_button.clicked.connect(self._open_client)
         self.logs_button.clicked.connect(self._show_logs)
-        for button in (
+        buttons = (
             self.apply_button,
             self.rebuild_button,
             self.verify_button,
             self.client_button,
             self.logs_button,
-        ):
+        )
+        for button in buttons:
             button.setMinimumHeight(self._comfortable_height(button))
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            body_layout.addWidget(button)
+        self._operation_buttons = _WrappingButtons(list(buttons))
+        fixed_layout.addWidget(self._operation_buttons)
         self.block_reason = QLabel("")
         self.block_reason.setObjectName("hint")
         self.block_reason.setWordWrap(True)
-        body_layout.addWidget(self.block_reason)
-        self._operation_scroll = _scrollable(body)
-        self._operation_scroll.setObjectName("operationScroll")
-        layout.addWidget(self._operation_scroll, 1)
+        fixed_layout.addWidget(self.block_reason)
+        fixed.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self._operation_fixed = fixed
+        layout.addWidget(fixed, 0)
         return frame
 
     def _progress_card(self) -> QFrame:
@@ -494,50 +600,37 @@ class MainWindow(QMainWindow):
         self.summary_label = QLabel("Conecte o Proxmark3 e escolha um módulo.")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
-        note = QLabel(
+        self._progress_note = QLabel(
             "Durante a gravação a porta pode sumir enquanto o bootloader reinicia. "
             "Isso não é, sozinho, uma falha. Se for preciso apertar o botão do Proxmark3, "
             "o programa avisa: ele não aperta o botão por você."
         )
-        note.setObjectName("hint")
-        note.setWordWrap(True)
+        self._progress_note.setObjectName("hint")
+        self._progress_note.setWordWrap(True)
+        self._progress_note.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        layout.addWidget(self._progress_note)
         self.log_legend = QLabel(
             "Estados: Informação, Aviso, Erro operacional, Falha crítica, "
             "Evento de teste, Validação parcial e Validação concluída."
         )
         self.log_legend.setObjectName("hint")
         self.log_legend.setWordWrap(True)
-        notes = _HeightBody()
-        notes_layout = QVBoxLayout(notes)
-        notes_layout.setContentsMargins(0, 0, 0, 0)
-        notes_layout.setSpacing(6)
-        notes_layout.addWidget(note)
-        notes_layout.addWidget(self.log_legend)
-        self._progress_scroll = _scrollable(notes)
-        self._progress_scroll.setObjectName("progressScroll")
-        self._progress_scroll.setMinimumHeight(24)
+        self.log_legend.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        layout.addWidget(self.log_legend)
         self.log_view = QTextEdit()
+        self.log_view.setObjectName("progressLog")
         self.log_view.setReadOnly(True)
         self.log_view.setAcceptRichText(True)
         self.log_view.document().setMaximumBlockCount(2000)
         self.log_view.setFont(QFont("Consolas", 10))
-        self.log_view.setMinimumHeight(64)
+        self.log_view.setMinimumHeight(48)
         self.log_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.log_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.log_view.setPlaceholderText(
             "O estado de cada operação aparece identificado. O texto técnico da compilação e da gravação permanece neste painel."
         )
-        self._progress_split = QSplitter(Qt.Orientation.Vertical)
-        self._progress_split.setObjectName("progressSplit")
-        self._progress_split.setChildrenCollapsible(False)
-        self._progress_split.setHandleWidth(6)
-        self._progress_split.addWidget(self._progress_scroll)
-        self._progress_split.addWidget(self.log_view)
-        self._progress_split.setStretchFactor(0, 1)
-        self._progress_split.setStretchFactor(1, 4)
-        self._progress_split.setCollapsible(0, False)
-        self._progress_split.setCollapsible(1, False)
-        self._progress_split.splitterMoved.connect(self._progress_moved)
-        layout.addWidget(self._progress_split, 1)
+        layout.addWidget(self.log_view, 1)
+        frame.setMinimumHeight(120)
         return frame
 
     def set_status(self, status: str) -> None:
@@ -1121,9 +1214,9 @@ class MainWindow(QMainWindow):
         self._apply_saved_main_sizes()
         self._fit_module_columns()
         self._fit_wrapped_text(self._device_scroll)
-        self._fit_wrapped_text(self._operation_scroll)
-        self._fit_wrapped_text(self._progress_scroll)
-        self._balance_progress()
+        self._fit_wrapped_text(self._operation_fixed)
+        self._fit_wrapped_text(self._progress_note.parentWidget())
+        self._clamp_main_split()
         self._splits_ready = True
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - API do Qt
@@ -1137,14 +1230,14 @@ class MainWindow(QMainWindow):
         self._fitting_text = True
         try:
             self._fit_wrapped_text(self._device_scroll)
-            self._fit_wrapped_text(self._operation_scroll)
-            self._fit_wrapped_text(self._progress_scroll)
-            self._balance_progress()
+            self._fit_wrapped_text(self._operation_fixed)
+            self._sync_operation_floor()
+            self._clamp_main_split()
         finally:
             self._fitting_text = False
 
-    def _fit_wrapped_text(self, scroll: QScrollArea) -> None:
-        body = scroll.widget()
+    def _fit_wrapped_text(self, root: QWidget | QScrollArea) -> None:
+        body = root.widget() if isinstance(root, QScrollArea) else root
         if body is None:
             return
         for label in body.findChildren(QLabel):
@@ -1155,25 +1248,83 @@ class MainWindow(QMainWindow):
                 label.setMinimumHeight(needed)
         body.updateGeometry()
 
+    def _operation_floor(self) -> int:
+        width = self._operation_fixed.width()
+        if width < 80:
+            width = max(180, self._operation_frame.width() - 28)
+        fixed = self._operation_fixed.heightForWidth(max(width, 180))
+        details = self._operation_details_scroll.minimumHeight()
+        return fixed + details + 14 + 14 + 28 + 8
+
+    def _sync_operation_floor(self) -> None:
+        floor = self._operation_floor()
+        if abs(self._operation_frame.minimumHeight() - floor) > 4:
+            self._operation_frame.setMinimumHeight(floor)
+        top_floor = floor if not self._top_narrow else max(floor, 160)
+        if abs(self._top_split.minimumHeight() - top_floor) > 4:
+            self._top_split.setMinimumHeight(top_floor)
+
     def _apply_top_orientation(self) -> None:
         central = self.centralWidget()
         width = central.width() if central is not None else self.width()
         narrow = width < self.NARROW_LAYOUT_WIDTH
-        if narrow == self._top_narrow:
-            return
+        changed = narrow != self._top_narrow
         self._top_narrow = narrow
         target = Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
         if self._top_split.orientation() != target:
             self._top_split.setOrientation(target)
-        self._top_split.setMinimumHeight(450 if narrow else 190)
-        self._apply_saved_top_sizes()
+            changed = True
+        self._sync_operation_floor()
+        if changed:
+            self._apply_saved_top_sizes()
 
     def _apply_saved_main_sizes(self) -> None:
         sizes = _parse_split_sizes(self.context.prefs.ui_main_split, 3, _MAIN_SPLIT_FLOOR)
         if sizes is None:
             total = max(self._main_split.height(), 480)
-            sizes = [total * 34 // 100, total * 42 // 100, total * 24 // 100]
+            updates = min(self.updates_panel.maximumHeight(), max(96, total * 16 // 100))
+            progress = max(110, total * 22 // 100)
+            top = max(0, total - updates - progress)
+            sizes = [top, updates, progress]
         self._main_split.setSizes(sizes)
+        self._clamp_main_split()
+
+    def _clamp_main_split(self) -> None:
+        if self._clamping or not hasattr(self, "_main_split"):
+            return
+        sizes = self._main_split.sizes()
+        if len(sizes) != 3 or sum(sizes) <= 0:
+            return
+        total = sum(sizes)
+        top, updates, progress = sizes
+        updates_cap = max(72, self.updates_panel.maximumHeight())
+        updates_floor = min(updates_cap, max(72, min(self.updates_panel.minimumHeight(), 140)))
+        progress_floor = min(100, max(72, total // 6))
+        top_floor = min(self._operation_floor(), max(160, total - updates_floor - progress_floor))
+        if updates > updates_cap:
+            top += updates - updates_cap
+            updates = updates_cap
+        if progress < progress_floor and top > top_floor:
+            move = min(top - top_floor, progress_floor - progress)
+            top -= move
+            progress += move
+        if top < top_floor:
+            need = top_floor - top
+            take = min(need, max(0, progress - progress_floor))
+            progress -= take
+            need -= take
+            take = min(need, max(0, updates - updates_floor))
+            updates -= take
+            need -= take
+            top = total - updates - progress
+        new = [top, updates, progress]
+        if new == sizes:
+            return
+        self._clamping = True
+        try:
+            self._main_split.setSizes(new)
+        finally:
+            self._clamping = False
 
     def _apply_saved_top_sizes(self) -> None:
         raw = self.context.prefs.ui_top_split_narrow if self._top_narrow else self.context.prefs.ui_top_split
@@ -1186,25 +1337,6 @@ class MainWindow(QMainWindow):
             else:
                 sizes = [total * 3 // 10, total * 4 // 10, total - (total * 7 // 10)]
         self._top_split.setSizes(sizes)
-
-    def _progress_moved(self, *_args) -> None:
-        if self._balancing_progress or not self._splits_ready:
-            return
-        self._progress_custom = True
-
-    def _balance_progress(self) -> None:
-        if self._progress_custom or not hasattr(self, "_progress_split"):
-            return
-        total = self._progress_split.height()
-        if total < 48:
-            return
-        notes = min(self.fontMetrics().height() * 3 + 8, max(24, total // 3))
-        notes = min(notes, total - 48)
-        self._balancing_progress = True
-        self._progress_split.blockSignals(True)
-        self._progress_split.setSizes([notes, total - notes])
-        self._progress_split.blockSignals(False)
-        self._balancing_progress = False
 
     def _schedule_split_save(self, *_args) -> None:
         if not self._splits_ready:
