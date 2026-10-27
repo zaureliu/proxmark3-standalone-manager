@@ -62,6 +62,17 @@ number is not part of that key. If the device or the module changes, the
 previous report is marked stale. It is not reused as proof of the new
 device.
 
+## Automatic identification
+
+Version 2.2.0 can build a hardware profile from the USB hint plus a
+diagnosis that is still valid for the same port, VID, and PID. The USB
+serial is not part of the context key and is not copied into the profile
+evidence. The profile does not write `detected_*` preferences. **Verificar
+dispositivo** still does. A new diagnosis feeds the profile without opening
+the port a second time. If a compile or a flash holds the operation lock,
+the automatic client read waits. It does not cancel that operation and it
+does not start one. See [device compatibility](device-compatibility.md).
+
 ## Safety
 
 The client runs off the Qt thread, with a timeout, a cancel button, and a

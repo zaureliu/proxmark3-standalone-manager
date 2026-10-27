@@ -24,7 +24,7 @@ the preferences and returns without flashing.
 | `E106` | The known COM port is in use. | Close the Proxmark client or any other serial program and try again. Other open failures do not use this block. |
 | `E200` | `make` failed. | Open `logs\build-<module>.log`. The checkout's `Makefile.platform` is restored. The device is not flashed. |
 | `E300` | The flash command did not end in a confirmed write. A later reconnect is not proof. | Do not assume the new image is active. Read `logs\flash-<module>.log`. Authorization is cleared. |
-| `E303` | Flash was refused because the device looks like an RDV4, or the internal flash size does not match the image. | Leave the official firmware in place. This application has no RDV4 image. |
+| `E303` | Compile or flash was refused. The device was identified as RDV4 or PM5, the identification is contradictory, or the internal flash size does not match the image. | Leave the official firmware in place. This application has no RDV4 or PM5 image. A PM3GENERIC image is not sent to either one. |
 | `E400` | Unexpected failure. | Read the technical detail in the log. |
 | `OK100` | Compile finished, or the cache was reused. If flashing was not authorized, the device was not written. | This is the expected result of **Recompilar** and of **Aplicar módulo** with the flash box clear. |
 | `OK202` | Communication worked and the firmware identifies itself as RDV4. | Diagnosis only. The PM3GENERIC image was not written. |
@@ -53,6 +53,41 @@ flash the device to remove it. See [diagnostics](diagnostics.md).
 **Ver manual do módulo** only opens the offline card. If a module from a
 newer checkout has no reviewed card, the manual says **Sem revisão**
 instead of inventing LEDs or buttons. See [module guide](module-guide.md).
+
+## Device identification and module marks
+
+The line under **Dispositivo** is a summary. The tooltip has the confidence,
+firmware, and configured platform. **Ver diagnóstico completo** opens the
+existing diagnosis tab. It does not flash.
+
+A module mark is an icon plus text. It is not a certificate. **Todos**
+always returns the full list. If the selected module disappears from a
+narrower filter, the list says so and does not pretend the module is still
+selected.
+
+These notices are one line, with the reason in the module details:
+
+- The device was not identified with confidence, or the client lines
+  contradict each other. No commercial model is chosen. Compile and flash
+  stay blocked when the lines conflict.
+- The mode needs SPI flash and the reading did not confirm it. Confirm the
+  checkbox only when the board has that memory. The checkbox is still
+  required before compilation even if the reading already says SPI is
+  present.
+- The mode is incompatible with the PM3GENERIC catalog on this installation,
+  or it is marked RDV4-only and the connected device was not identified as
+  RDV4.
+- Standalone is unavailable on the PM5 firmware that was analyzed. The 41
+  PM3 identifiers in the catalog are not PM5 support.
+- `Makefile.platform` names a different family from the identified hardware.
+  The file is not rewritten to match the device.
+- The selected checkout does not contain the mode, or its `Makefile.hal`
+  could not be read safely. Nothing is unlocked because the parse failed.
+- The installed firmware version and the local checkout are not proved to
+  be the same revision. That warning does not change the detected model.
+
+An evaluation from a previous device is marked stale and is not reused.
+See [device compatibility](device-compatibility.md).
 
 ## Update monitor
 

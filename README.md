@@ -13,6 +13,14 @@ Version 2.1.0 is the source published on `main`. The annotated tag
 stay where they are. There is no GitHub Release for 2.1.0, and the
 binary package stays `PUBLICATION: BLOCKED`.
 
+Version 2.2.0 is in development in this tree. It is not tagged, not
+merged, and not published. It identifies a connected Proxmark and rates
+each Standalone module against that reading, the selected Iceman checkout,
+and the pipeline this application has actually validated. Compilation and
+flashing stay explicit. RDV4 and PM5 stay consultive: this application
+still does not flash them. See
+[Automatic identification](docs/device-compatibility.md).
+
 Source: https://github.com/zaureliu/proxmark3-standalone-manager
 
 **Distribution: Source Code Only**
@@ -77,6 +85,10 @@ This repository does not supply that permission for Qt or PySide6.
 - Adds an offline **Manual** for the 41 Standalone modules in the v4.23346
   catalog, opened with **Ver manual do módulo**. Unknown fields stay
   unknown. See [Module guide](docs/module-guide.md).
+- Shows a one-line device identification on **Operações** and a
+  compatibility mark, with text and an icon, on each module. The full
+  catalog stays reachable. See
+  [Automatic identification](docs/device-compatibility.md).
 
 Compiling without flashing is a normal, supported action.
 
@@ -166,7 +178,8 @@ else. Checksums and the folder layout are in
 | USB `9AC4:4B8F` | Accepted as an Iceman Proxmark3. |
 | USB `2D2D:504D` | Accepted as a legacy Proxmark3. |
 | USB `502D:502D` | Accepted because the driver profile calls it Easy. That label does not select a 256 KB image. |
-| RDV4 | May be recognized and diagnosed (`OK202`). RDV4-specific compilation and flashing are not implemented. Writing the PM3GENERIC image to an RDV4 is blocked. |
+| RDV4 | May be recognized and diagnosed (`OK202`). Version 2.2.0 can mark technical compatibility. RDV4 compilation and flashing are not implemented. Writing the PM3GENERIC image to an RDV4 is blocked. |
+| PM5 | Version 2.2.0 can recognize the family from safe client text. On the analyzed v4.23346 tree, Standalone is disabled. This application does not compile or flash PM5 and does not send it a PM3 image. |
 | Bluetooth or smartcard modes | Classified incompatible when the checkout says they require that hardware. |
 | Bootloader | Not programmed by this application. |
 

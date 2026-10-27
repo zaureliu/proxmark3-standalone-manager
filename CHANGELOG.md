@@ -1,10 +1,46 @@
 # Changelog
 
-The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.1.0.
-Version 2.1.0 is the source published on `main`. The annotated tag `v2.1.0`
-identifies that publication. It does not move `v1.0.0` or `v2.0.0`, and it
-does not create a GitHub Release. The binary package stays
+The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.2.0.
+Version 2.2.0 is in development. It is not the source published on `main`.
+The annotated tag `v2.1.0` still identifies the published 2.1.0 source.
+This change does not move `v1.0.0`, `v2.0.0`, or `v2.1.0`, and it does not
+create a `v2.2.0` tag or a GitHub Release. The binary package stays
 `PUBLICATION: BLOCKED`.
+
+## 2.2.0 — in development
+
+Source Code Only is unchanged. There is no GitHub Release and no binary
+attachment.
+
+### Added
+
+- Multi-profile identification for a connected Proxmark: PM3 family with
+  the commercial model unconfirmed, Proxmark3 RDV4, Proxmark5, or unknown.
+  VID/PID, a USB name, `LED_ORDER`, `PLATFORM`, and an old preference do
+  not by themselves confirm a model. See
+  [device compatibility](docs/device-compatibility.md).
+- A dynamic compatibility rating for each Standalone module, with separate
+  hardware, checkout, and application-pipeline answers. The rating is not
+  "100% compatible". Missing evidence stays unconfirmed.
+- Catalog filters and a one-line device indicator on **Operações**. The
+  three tabs and the five operation buttons stay in place.
+
+### Changed
+
+- `Makefile.hal` requirement lists are read only when the assignment shape
+  is recognized. An unrecognized file marks the analysis incomplete and
+  does not unlock a module.
+- A catalog mode that is still uncertain, or a documented manual flag that
+  contradicts the Makefile, becomes confirmation required instead of
+  compatible.
+- RDV4 and PM5 identifications block compile and flash inside the service,
+  not only in the window. Flash authorization is still never stored as
+  true, and changing device clears a pending authorization.
+
+### Not in this version
+
+- No RDV4 image and no PM5 image. No PM3 firmware is sent to a PM5.
+- No tag, no merge, and no publication.
 
 ## 2.1.0 — source published
 
