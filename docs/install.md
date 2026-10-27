@@ -188,6 +188,16 @@ partial validation OK210".
 Details of ports, modules, and errors are in [compatibility](compatibility.md)
 and [troubleshooting](troubleshooting.md).
 
+## Diagnostics and the module guide
+
+**Diagnóstico** reads the environment and, only when you press **Executar
+diagnóstico**, the three client commands `hw version`, `hw status`, and
+`hw ping`. It does not flash, does not compile, and does not run while a
+compile or a flash holds the operation lock. **Manual** and **Ver manual do
+módulo** open the offline card for the selected Standalone module. Opening
+a card does not run RFID and does not contact GitHub. See
+[diagnostics](diagnostics.md) and [module guide](module-guide.md).
+
 ## Update monitor
 
 The **Atualizações** panel stays compact. It checks the official Iceman and

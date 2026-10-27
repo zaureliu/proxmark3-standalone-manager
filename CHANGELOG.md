@@ -1,8 +1,32 @@
 # Changelog
 
-The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.0.0.
-Maintenance after the published 2.0.0 source does not move the `v1.0.0` or
-`v2.0.0` tags and does not create a release.
+The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.1.0.
+That number is a local candidate. It does not move the `v1.0.0` or `v2.0.0`
+tags and it does not create a release. Version 2.0.0 remains the source
+published on `main`. The binary package stays `PUBLICATION: BLOCKED`.
+
+## 2.1.0 — local candidate
+
+Not tagged. Not published. Source Code Only is unchanged.
+
+### Added
+
+- Read-only **Diagnóstico** tab. It separates detected, configured,
+  documented, inferred, unverified, and unavailable facts. The client
+  commands are only `hw version`, `hw status`, and `hw ping`. Export is
+  JSON or plain text, with home paths, secrets, serials, and card-like
+  lines redacted. The result is consultive and is not a compatibility
+  certificate. See `docs/diagnostics.md`.
+- Offline manual for the 41 Standalone modules of Iceman v4.23346, commit
+  `dc0110c29d320e04b37ea436ee2924901407ae72`. Cards cite that commit. Fields
+  without evidence stay "Não documentado" or "Não verificado". None of the
+  41 cards is marked fully reviewed. See `docs/module-guide.md`.
+
+### Changed
+
+- The diagnosis and the manual do not start compilation or flashing, and
+  they do not replace the existing module classification or the flash
+  authorization rules.
 
 ## Maintenance after 2.0.0
 
