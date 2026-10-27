@@ -1,13 +1,15 @@
 # Changelog
 
 The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.1.0.
-That number is a local candidate. It does not move the `v1.0.0` or `v2.0.0`
-tags and it does not create a release. Version 2.0.0 remains the source
-published on `main`. The binary package stays `PUBLICATION: BLOCKED`.
+Version 2.1.0 is the source published on `main`. The annotated tag `v2.1.0`
+identifies that publication. It does not move `v1.0.0` or `v2.0.0`, and it
+does not create a GitHub Release. The binary package stays
+`PUBLICATION: BLOCKED`.
 
-## 2.1.0 — local candidate
+## 2.1.0 — source published
 
-Not tagged. Not published. Source Code Only is unchanged.
+Source Code Only is unchanged. There is no GitHub Release and no binary
+attachment.
 
 ### Added
 
@@ -27,6 +29,9 @@ Not tagged. Not published. Source Code Only is unchanged.
 - The diagnosis and the manual do not start compilation or flashing, and
   they do not replace the existing module classification or the flash
   authorization rules.
+- The diagnostics document explains the firmware `-suspect` suffix as
+  Iceman's clean flag value 2 (the tree state could not be determined).
+  It does not assign a cause to any particular device.
 
 ## Maintenance after 2.0.0
 
@@ -37,8 +42,8 @@ Not tagged. Not published. Source Code Only is unchanged.
   commands used to clone it, create a virtual environment, and start
   `pm3manager`. ProxSpace and Iceman remain separate installs.
 Dates below are the dates the work was prepared, not publication dates.
-Version 2.0.0 is the source published on `main`. The binary package stays
-`PUBLICATION: BLOCKED`.
+Version 2.0.0 was the source published on `main` before 2.1.0. The binary
+package stays `PUBLICATION: BLOCKED`.
 The annotated tag `v1.0.0` identifies the published V1 commit
 `0220808428b7a17e1fd118bb3b2e2a64f7b2c4a6`.
 

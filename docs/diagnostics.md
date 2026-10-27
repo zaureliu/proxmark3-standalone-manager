@@ -77,8 +77,26 @@ still refused while a compile or a flash is running.
 The file includes the time, the application version, the checkout version
 when it was read, the origin of each fact, the checks, the limits, and the
 module verdict. Paths under a home directory, e-mail addresses, tokens,
-serial numbers, flash unique IDs, and lines that look like a card UID or a
-dump are redacted. The report is not a certificate.
+serial numbers, processor unique IDs, flash unique IDs in either byte
+order, and lines that look like a card UID or a dump are redacted. The
+client answer is cleaned before it becomes a fact, a check, or the
+technical section. A timed-out or cancelled reading does not keep a partial
+client answer in that section. The report is not a certificate.
+
+## Version suffix `-suspect`
+
+A client, firmware, or bootrom line may end in `-suspect` or `-unclean`.
+In the Iceman v4.23346 sources this check was compared with,
+`include/common.h` documents the `clean` flag as 1 when the tree was clean,
+0 when it was unclean, and 2 when that state could not be determined.
+`common/commonutil.c` appends `-unclean` for 0 and `-suspect` for 2.
+`tools/mkversion.sh` starts that flag at 2 and records 0 or 1 only when
+the script is invoked with `--undecided` and git is available.
+
+`-suspect` means the recorded flag was 2. By itself it does not prove a
+dirty tree, a failed flash, a hardware fault, or a modified image. The
+diagnosis copies the version text and does not invent a cause. It does not
+strip the suffix, and it does not update or reflash the device to remove it.
 
 ## Limits
 

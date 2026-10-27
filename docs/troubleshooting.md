@@ -45,8 +45,10 @@ automatic incompatibility. If a compile or a flash is running, the
 diagnosis refuses to start and does not cancel that operation.
 
 The exported report redacts home-directory paths, e-mail addresses, tokens,
-USB serial numbers, and lines that look like a card UID or a dump. It is
-not a certificate. See [diagnostics](diagnostics.md).
+USB serial numbers, processor unique IDs, flash unique IDs, and lines that
+look like a card UID or a dump. It is not a certificate. A version suffix
+`-suspect` is not treated as a proved cause, and the diagnosis does not
+flash the device to remove it. See [diagnostics](diagnostics.md).
 
 **Ver manual do módulo** only opens the offline card. If a module from a
 newer checkout has no reviewed card, the manual says **Sem revisão**

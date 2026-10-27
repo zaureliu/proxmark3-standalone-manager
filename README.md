@@ -8,9 +8,10 @@ The window is in Brazilian Portuguese. This repository is the manager. It
 is not the Proxmark firmware, it is not ProxSpace, and it is not an official
 RfidResearchGroup product.
 
-Version 2.1.0. This number is a local candidate. The published tags
-`v1.0.0` and `v2.0.0` are unchanged, and there is no GitHub Release for
-2.1.0. Version 2.0.0 remains the source on `main`.
+Version 2.1.0 is the source published on `main`. The annotated tag
+`v2.1.0` identifies that publication. The tags `v1.0.0` and `v2.0.0`
+stay where they are. There is no GitHub Release for 2.1.0, and the
+binary package stays `PUBLICATION: BLOCKED`.
 
 Source: https://github.com/zaureliu/proxmark3-standalone-manager
 
