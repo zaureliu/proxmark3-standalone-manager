@@ -8,7 +8,11 @@ The existing catalog remains the list of module IDs. The guide does not
 invent new IDs and does not replace the compatibility class used by
 **Aplicar módulo**. A card can be more specific about what was read in
 source, but a consultive note does not make an incompatible module
-compilable.
+compilable. Version 2.2.0 does not let a manual field override a Makefile
+restriction. An inferred field is not a confirmed physical requirement. A
+documented field that disagrees with `Makefile.hal` is shown as a conflict
+and the mode is not called compatible on that basis. See
+[device compatibility](device-compatibility.md).
 
 ## Evidence
 

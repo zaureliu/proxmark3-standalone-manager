@@ -33,6 +33,7 @@ from pm3manager.flash.flasher import (
 )
 from pm3manager.hardware.detector import match_after_reboot
 from pm3manager.hardware.identity import parse_identity
+from pm3manager.hardware.profile import HardwareProfile, operation_block
 from pm3manager.hardware.serial_lock import port_is_free
 from pm3manager.logging_setup import audit, log
 from pm3manager.messages import Msg
@@ -86,6 +87,10 @@ def incompatible_flash(
     mcu = (report.mcu if report is not None and report.mcu else "") or prefs.detected_mcu or ""
     if kind == "RDV4":
         return Msg.FLASH_RDV4_BLOCKED
+    if kind == "PM5":
+        return Msg.FLASH_PM5_BLOCKED
+    if kind in {"GENERIC", "conflito"}:
+        return Msg.FLASH_IDENTITY_BLOCKED
     small = "256" in mcu and "512" not in mcu
     if small and config.platform_size != "256":
         return Msg.FLASH_SIZE_BLOCKED
@@ -138,10 +143,19 @@ class ManagerService:
         flash_authorized: bool,
         on_stage: StageCallback | None = None,
         on_log: LogCallback | None = None,
+        profile: HardwareProfile | None = None,
     ) -> OperationResult:
         return self._guarded(
             "apply",
-            lambda: self._apply(module, device, force_rebuild, flash_authorized, on_stage, on_log),
+            lambda: self._apply(
+                module,
+                device,
+                force_rebuild,
+                flash_authorized,
+                on_stage,
+                on_log,
+                profile,
+            ),
             module_id=module.id,
         )
 
@@ -151,10 +165,17 @@ class ManagerService:
         *,
         on_stage: StageCallback | None = None,
         on_log: LogCallback | None = None,
+        profile: HardwareProfile | None = None,
     ) -> OperationResult:
         return self._guarded(
             "recompile",
-            lambda: self._compile_only(module, force_rebuild=True, on_stage=on_stage, on_log=on_log),
+            lambda: self._compile_only(
+                module,
+                force_rebuild=True,
+                on_stage=on_stage,
+                on_log=on_log,
+                profile=profile,
+            ),
             module_id=module.id,
         )
 
@@ -191,7 +212,8 @@ class ManagerService:
         self._operation_id = f"{owner}-{uuid.uuid4().hex[:12]}"
         self._current_module = module_id
         if not self.lock.acquire(owner):
-            result = OperationResult(False, "E010", Msg.BUSY, "busy", stage="concorrencia")
+            message = Msg.IDENTIFYING if self.lock.owner == "identification" else Msg.BUSY
+            result = OperationResult(False, "E010", message, "busy", stage="concorrencia")
             self._record(result, module_id)
             return result
         try:
@@ -235,7 +257,13 @@ class ManagerService:
         flash_authorized: bool,
         on_stage: StageCallback | None,
         on_log: LogCallback | None,
+        profile: HardwareProfile | None = None,
     ) -> OperationResult:
+        denied = operation_block(profile, self.prefs.detected_firmware_kind)
+        if denied:
+            result = OperationResult(False, "E303", denied, "blocked", stage="bloqueio")
+            self._record(result, module.id)
+            return result
         allowed, reason = can_apply(module, self.prefs)
         if not allowed:
             code = "E104" if "incompatível" in reason.lower() else "E105"
@@ -261,6 +289,7 @@ class ManagerService:
             on_stage=on_stage,
             on_log=on_log,
             record=False,
+            profile=profile,
         )
         if not compiled.ok:
             self._record(compiled, module.id)
@@ -303,7 +332,14 @@ class ManagerService:
         on_stage: StageCallback | None,
         on_log: LogCallback | None,
         record: bool = True,
+        profile: HardwareProfile | None = None,
     ) -> OperationResult:
+        denied = operation_block(profile, self.prefs.detected_firmware_kind)
+        if denied:
+            result = OperationResult(False, "E303", denied, "blocked", stage="bloqueio")
+            if record:
+                self._record(result, module.id)
+            return result
         allowed, reason = can_apply(module, self.prefs)
         if not allowed:
             code = "E104" if "incompatível" in reason.lower() else "E105"
@@ -493,12 +529,12 @@ class ManagerService:
             "etapa_all_done": "confirmada",
             "etapa_reconexao": "confirmada",
         }
-        if report.firmware_kind == "RDV4":
+        if report.firmware_kind in {"RDV4", "PM5", "GENERIC", "conflito"}:
             details.update(
                 flash_steps(
                     **proved,
                     etapa_comunicacao="confirmada" if report.communication_ok else "nao_confirmada",
-                    etapa_plataforma="RDV4",
+                    etapa_plataforma=report.firmware_kind or "nao_confirmada",
                     validacao="incompativel",
                 )
             )
@@ -599,6 +635,24 @@ class ManagerService:
                 True,
                 "OK202",
                 Msg.RDV4_DIAGNOSTIC,
+                "verified_restricted",
+                technical=report.summary,
+                details=details,
+            )
+        elif report.communication_ok and report.firmware_kind == "PM5":
+            result = OperationResult(
+                True,
+                "OK203",
+                Msg.FLASH_PM5_BLOCKED,
+                "verified_restricted",
+                technical=report.summary,
+                details=details,
+            )
+        elif report.communication_ok and report.firmware_kind in {"GENERIC", "conflito"}:
+            result = OperationResult(
+                True,
+                "OK204",
+                Msg.FLASH_IDENTITY_BLOCKED,
                 "verified_restricted",
                 technical=report.summary,
                 details=details,

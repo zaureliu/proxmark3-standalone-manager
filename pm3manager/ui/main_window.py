@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import os
 import sys
+import threading
 
 from PySide6.QtCore import QElapsedTimer, QSize, Qt, QTimer
 from PySide6.QtGui import QFont, QIcon
@@ -38,7 +39,32 @@ from PySide6.QtWidgets import (
 
 from pm3manager import __version__
 from pm3manager.errors import AppError
+from pm3manager.compatibility.engine import (
+    FILTERS,
+    Verdict,
+    device_notice,
+    evaluate_all,
+    passes_filter,
+)
+from pm3manager.compatibility.rules import load_checkout_rules, shallow_checkout
 from pm3manager.hardware.detector import detect_devices
+from pm3manager.hardware.profile import (
+    IdConfidence,
+    IdentifyInput,
+    authorization_invalidated,
+    context_key,
+    identify,
+    operation_block,
+    read_make_assignments,
+)
+from pm3manager.hardware.serial_lock import port_is_free
+from pm3manager.hardware.session import (
+    IdentificationCache,
+    ProbeAction,
+    ProbeRequest,
+    choose_probe,
+    probe_profile,
+)
 from pm3manager.messages import Msg
 from pm3manager.models import COMPATIBILITY_LABEL, Compatibility, Confidence, Device, Module
 from pm3manager.modules.catalog import can_apply, filter_modules
@@ -46,6 +72,7 @@ from pm3manager.paths import resource_path
 from pm3manager.client.launcher import launch_client
 from pm3manager.logging_setup import environment_name, latest_log_file, setup_logging
 from pm3manager.ui.diagnostics_panel import DiagnosticsPanel
+from pm3manager.ui.identify_worker import IdentifyWorker
 from pm3manager.ui.guide_panel import GuidePanel
 from pm3manager.ui.presentation import present_result
 from pm3manager.ui.theme import LOG_KIND_COLORS, STATUS_COLORS, STYLESHEET
@@ -181,6 +208,22 @@ def _wrapping_check(checkbox: QCheckBox, text: str) -> QWidget:
     return row
 
 
+class _NoMinWidthLabel(QLabel):
+    """Texto de uma linha que não aumenta a largura mínima do cartão."""
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(text, parent)
+        self.setWordWrap(False)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, max(self.fontMetrics().height() + 2, 16))
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, self.minimumSizeHint().height())
+
+
 class _WrappingButtons(QWidget):
     """Distribui os botões em linhas sem reduzir a largura abaixo do texto."""
 
@@ -281,6 +324,25 @@ class MainWindow(QMainWindow):
         self._top_narrow: bool | None = None
         self._splits_ready = False
         self._module_columns_custom = False
+        self._profile = None
+        self._profile_signature = None
+        self._assessments = {}
+        self._rules = None
+        self._rules_repo = ""
+        self._bound_identity_key = ""
+        self._pinned_module_id = context.prefs.last_module_id
+        self._filter_touched = False
+        self._setting_filter = False
+        self._filter_default_for = ""
+        self._refreshing_modules = False
+        self._identify_worker: IdentifyWorker | None = None
+        self._identify_cancel = threading.Event()
+        self._identify_cache = IdentificationCache()
+        self._last_notice = None
+        self._probe_timer = QTimer(self)
+        self._probe_timer.setSingleShot(True)
+        self._probe_timer.setInterval(400)
+        self._probe_timer.timeout.connect(self._start_probe)
         self._fitting_columns = False
         self._fitting_text = False
         self._clamping = False
@@ -366,6 +428,7 @@ class MainWindow(QMainWindow):
             self._selected_module,
             self._diagnostic_blocked,
             self._set_diagnostic_busy,
+            self._on_diagnostic_report,
         )
         self.guide_panel = GuidePanel(self.context.modules)
         self._pages.addTab(self.diagnostics_panel, "Diagnóstico")
@@ -385,6 +448,14 @@ class MainWindow(QMainWindow):
         label.setObjectName("title")
         label.setStyleSheet("font-size: 15px; background: transparent;")
         layout.addWidget(label)
+        if title == "Dispositivo":
+            self.device_identity = _NoMinWidthLabel("Dispositivo: não identificado")
+            self.device_identity.setObjectName("deviceIdentity")
+            self.device_identity.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.device_identity.setToolTip(
+                "Família, modelo, firmware, plataforma e confiança da identificação."
+            )
+            layout.addWidget(self.device_identity)
         return frame, layout
 
     def _comfortable_height(self, widget: QWidget) -> int:
@@ -492,8 +563,33 @@ class MainWindow(QMainWindow):
         self.category_combo.currentTextChanged.connect(self._refresh_modules)
         self.category_combo.setMinimumHeight(self._comfortable_height(self.category_combo))
         self.category_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.compatibility_filter = QComboBox()
+        self.compatibility_filter.setObjectName("compatibilityFilter")
+        self.compatibility_filter.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.compatibility_filter.setMinimumContentsLength(16)
+        self.compatibility_filter.setMinimumWidth(0)
+        self.compatibility_filter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        for value, label in FILTERS:
+            self.compatibility_filter.addItem(label, value)
+        todos = self.compatibility_filter.findData("todos")
+        if todos >= 0:
+            self.compatibility_filter.setCurrentIndex(todos)
+        self.compatibility_filter.currentIndexChanged.connect(self._compatibility_filter_changed)
+        self.compatibility_filter.setMinimumHeight(self._comfortable_height(self.compatibility_filter))
+        self.compatibility_filter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.fit_notice = _NoMinWidthLabel("")
+        self.fit_notice.setObjectName("fitNotice")
+        self.fit_notice.setVisible(False)
+        self.module_filter_note = _NoMinWidthLabel("")
+        self.module_filter_note.setObjectName("moduleFilterNote")
+        self.module_filter_note.setVisible(False)
         layout.addWidget(self.search_box)
         layout.addWidget(self.category_combo)
+        layout.addWidget(self.compatibility_filter)
+        layout.addWidget(self.fit_notice)
+        layout.addWidget(self.module_filter_note)
         self.module_table = QTableWidget(0, 4)
         self.module_table.setHorizontalHeaderLabels(["Identificador", "Nome", "Compatibilidade", "Cache"])
         self.module_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -522,7 +618,11 @@ class MainWindow(QMainWindow):
         self.manual_button = QPushButton("Ver manual do módulo")
         self.manual_button.setMinimumHeight(self._comfortable_height(self.manual_button))
         self.manual_button.clicked.connect(self._open_module_manual)
-        layout.addWidget(self.manual_button)
+        self.diagnosis_button = QPushButton("Ver diagnóstico completo")
+        self.diagnosis_button.setMinimumHeight(self._comfortable_height(self.diagnosis_button))
+        self.diagnosis_button.clicked.connect(self._open_diagnosis)
+        self._module_links = _WrappingButtons([self.manual_button, self.diagnosis_button])
+        layout.addWidget(self._module_links)
         return frame
 
     def _operation_card(self) -> QFrame:
@@ -695,6 +795,7 @@ class MainWindow(QMainWindow):
             self.device_combo.setCurrentIndex(chosen)
         self.device_combo.blockSignals(False)
         self._show_device(self._selected_device(), announce=not self._busy)
+        self._after_devices()
         if not self._busy and not self._diagnostic_busy:
             if not devices:
                 self.set_status("Desconectado")
@@ -719,6 +820,7 @@ class MainWindow(QMainWindow):
             self.context.prefs.selected_serial = device.identity_key
         self.context.prefs.save()
         self._show_device(device, announce=True)
+        self._after_devices()
         if hasattr(self, "diagnostics_panel"):
             self.diagnostics_panel.mark_context()
 
@@ -801,18 +903,28 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_modules(self) -> None:
-        selected = self._selected_module()
+        current = self._selected_module()
+        pinned = self._pinned_module_id or (current.id if current else "")
         modules = filter_modules(
             self.context.modules,
             self.search_box.text() if hasattr(self, "search_box") else "",
             self.category_combo.currentText() if hasattr(self, "category_combo") else "Todas",
         )
-        self.module_table.setRowCount(len(modules))
+        selected_filter = self._selected_filter()
+        visible = [
+            module
+            for module in modules
+            if passes_filter(self._assessments.get(module.id), selected_filter)
+        ]
+        self._refreshing_modules = True
+        self.module_table.setRowCount(len(visible))
         toolchain = self.service.toolchain
-        for row, module in enumerate(modules):
+        for row, module in enumerate(visible):
             config = build_config(module.id, self.context.prefs)
             cache = self.context.cache.status(self.context.env, config, toolchain)
-            values = (module.id, module.name, COMPATIBILITY_LABEL[module.compatibility], cache)
+            assessment = self._assessments.get(module.id)
+            compatibility = assessment.marker() if assessment is not None else COMPATIBILITY_LABEL[module.compatibility]
+            values = (module.id, module.name, compatibility, cache)
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
@@ -821,10 +933,20 @@ class MainWindow(QMainWindow):
                     item.setToolTip(f"{module.id}\n{module.name}")
                 elif column == 1:
                     item.setToolTip(f"{module.name}\n\n{module.description}")
+                elif column == 2 and assessment is not None:
+                    item.setToolTip(self._assessment_tip(assessment))
                 self.module_table.setItem(row, column, item)
         self._fit_module_columns()
-        if selected:
-            self._select_module(selected.id)
+        if pinned and any(module.id == pinned for module in visible):
+            self._select_module(pinned)
+            self._set_filter_note("")
+        else:
+            self.module_table.clearSelection()
+            if pinned and selected_filter not in {"", "todos"}:
+                self._set_filter_note("O módulo selecionado não está neste filtro.")
+            else:
+                self._set_filter_note("")
+        self._refreshing_modules = False
         self._module_changed()
 
     def _select_last_module(self) -> None:
@@ -854,7 +976,11 @@ class MainWindow(QMainWindow):
         return None
 
     def _module_changed(self) -> None:
+        if self._refreshing_modules:
+            return
         module = self._selected_module()
+        if module is not None:
+            self._pinned_module_id = module.id
         self.confirm_uncertain.blockSignals(True)
         if module is None:
             self.details.setPlainText("Selecione um módulo.")
@@ -874,6 +1000,7 @@ class MainWindow(QMainWindow):
                 f"Frequência: {module.frequency}",
                 f"Categoria: {module.category.value}",
                 f"Compatibilidade: {COMPATIBILITY_LABEL[module.compatibility]}",
+                *self._assessment_lines(module.id),
                 f"Requisitos: {module.hardware_requirements}",
                 f"Arquivo: {module.source_file or 'não mapeado'}",
                 "",
@@ -900,8 +1027,9 @@ class MainWindow(QMainWindow):
         module = self._selected_module()
         device = self._selected_device()
         allowed, reason = can_apply(module, self.context.prefs) if module else (False, "Selecione um módulo.")
-        hardware_block = ""
-        if allowed and module is not None and self.context.prefs.flash_autorizado:
+        pipeline = operation_block(self._active_profile(), self.context.prefs.detected_firmware_kind)
+        hardware_block = pipeline
+        if allowed and module is not None and self.context.prefs.flash_autorizado and not hardware_block:
             try:
                 hardware_block = incompatible_flash(
                     self.context.prefs,
@@ -921,7 +1049,7 @@ class MainWindow(QMainWindow):
         occupied = self._busy or self._diagnostic_busy
         self.authorize_check.setEnabled(not occupied)
         self.apply_button.setEnabled((not occupied) and allowed and not hardware_block)
-        self.rebuild_button.setEnabled((not occupied) and allowed)
+        self.rebuild_button.setEnabled((not occupied) and allowed and not pipeline)
         if hasattr(self, "proxspace_button"):
             self.proxspace_button.setEnabled(not occupied)
             self.repo_combo.setEnabled(not occupied)
@@ -1028,12 +1156,16 @@ class MainWindow(QMainWindow):
             self.diagnostics_panel.rebind(fresh)
         if hasattr(self, "guide_panel"):
             self.guide_panel.set_modules(fresh.modules)
+        self._rules = None
+        self._rules_repo = ""
+        self._identify_cache.invalidate()
+        self._after_devices()
 
     def _spi_toggled(self, checked: bool) -> None:
         self.context.prefs.spi_flash_confirmada = checked
         self.context.prefs.spi_flash_recusada = not checked
         self.context.prefs.save()
-        self._refresh_modules()
+        self._recompute()
         self._refresh_config_text()
 
     def _size_toggled(self, checked: bool) -> None:
@@ -1112,6 +1244,7 @@ class MainWindow(QMainWindow):
                 flash_authorized=authorized,
                 on_stage=on_stage,
                 on_log=on_log,
+                profile=self._active_profile(),
             ),
             consumes_authorization=authorized,
         )
@@ -1121,7 +1254,12 @@ class MainWindow(QMainWindow):
         if module is None:
             return
         self._start(
-            lambda on_log, on_stage: self.service.recompile(module, on_stage=on_stage, on_log=on_log),
+            lambda on_log, on_stage: self.service.recompile(
+                module,
+                on_stage=on_stage,
+                on_log=on_log,
+                profile=self._active_profile(),
+            ),
             consumes_authorization=False,
         )
 
@@ -1300,7 +1438,10 @@ class MainWindow(QMainWindow):
             if not label.wordWrap() or label.width() < 20:
                 continue
             needed = label.heightForWidth(label.width())
-            if needed > label.minimumHeight() + 1:
+            line = max(label.fontMetrics().height(), 16)
+            if needed < line:
+                needed = line
+            if abs(label.minimumHeight() - needed) > 1:
                 label.setMinimumHeight(needed)
         body.updateGeometry()
 
@@ -1442,6 +1583,339 @@ class MainWindow(QMainWindow):
             return
         self._module_columns_custom = True
 
+    def _selected_filter(self) -> str:
+        if not hasattr(self, "compatibility_filter"):
+            return "todos"
+        return str(self.compatibility_filter.currentData() or "todos")
+
+    def _set_filter_note(self, text: str) -> None:
+        if not hasattr(self, "module_filter_note"):
+            return
+        self.module_filter_note.setText(text)
+        self.module_filter_note.setToolTip(text)
+        self.module_filter_note.setVisible(bool(text))
+
+    def _assessment_tip(self, assessment) -> str:
+        lines = [
+            assessment.summary,
+            f"Hardware: {assessment.hardware.value}",
+            f"Firmware/checkout: {assessment.firmware.value}",
+            f"Suporte deste aplicativo: {assessment.operational.value}",
+        ]
+        lines.extend(assessment.reasons[:6])
+        lines.extend(assessment.conflicts[:4])
+        return "\n".join(lines)
+
+    def _assessment_lines(self, module_id: str) -> list[str]:
+        assessment = self._assessments.get(module_id)
+        if assessment is None:
+            return []
+        lines = [
+            assessment.summary,
+            f"Hardware: {assessment.hardware.value}",
+            f"Firmware/checkout: {assessment.firmware.value}",
+            f"Suporte deste aplicativo: {assessment.operational.value}",
+        ]
+        if assessment.reasons:
+            lines.append("Evidências:")
+            lines.extend(f"• {item}" for item in assessment.reasons[:8])
+        if assessment.conflicts:
+            lines.append("Conflitos:")
+            lines.extend(f"• {item}" for item in assessment.conflicts[:4])
+        return lines
+
+    def _compatibility_filter_changed(self) -> None:
+        if self._setting_filter:
+            return
+        self._filter_touched = True
+        self._refresh_modules()
+
+    def _open_diagnosis(self) -> None:
+        if hasattr(self, "diagnostics_panel"):
+            self._pages.setCurrentWidget(self.diagnostics_panel)
+
+    def _active_profile(self):
+        profile = self._profile
+        device = self._selected_device() if hasattr(self, "device_combo") else None
+        if profile is None or profile.stale or device is None:
+            return None
+        if profile.identity_key != device.identity_key:
+            return None
+        return profile
+
+    def _after_devices(self) -> None:
+        if not hasattr(self, "device_identity"):
+            return
+        device = self._selected_device()
+        key = device.identity_key if device is not None else ""
+        if authorization_invalidated(self._bound_identity_key, key):
+            self._revoke_flash_authorization(update_summary=False)
+            self._identify_cache.invalidate()
+            if self._profile is not None:
+                self._profile.stale = True
+            self._filter_touched = False
+            self._filter_default_for = ""
+            self._identify_cancel.set()
+            self._identify_cancel = threading.Event()
+        self._bound_identity_key = key
+        self._schedule_identification()
+
+    def _schedule_identification(self) -> None:
+        device = self._selected_device()
+        request = ProbeRequest(
+            has_device=device is not None,
+            locked=bool(self.context.lock.locked or self._busy or self._diagnostic_busy),
+            port_free=True,
+            cache_fresh=False,
+            under_test="PYTEST_CURRENT_TEST" in os.environ,
+        )
+        action = choose_probe(request)
+        if action in {ProbeAction.NONE, ProbeAction.SKIP_TEST, ProbeAction.DEFER}:
+            self._publish_observed(deferred=action == ProbeAction.DEFER)
+            return
+        cached = None
+        if device is not None:
+            cached = self._identify_cache.lookup(device.identity_key, self.context.env.commit)
+        if cached is not None:
+            self._show_identification(cached)
+            return
+        if self._identify_worker is not None and self._identify_worker.isRunning():
+            return
+        self._probe_timer.start()
+
+    def _publish_observed(self, *, deferred: bool) -> None:
+        profile = identify(self._observed_input(source="usb"))
+        if deferred:
+            profile.active_deferred = True
+            profile.evidence = profile.evidence + (
+                "Identificação ativa adiada enquanto a porta está em uso.",
+            )
+        self._show_identification(profile)
+
+    def _start_probe(self) -> None:
+        device = self._selected_device()
+        if device is None or self._busy or self._diagnostic_busy:
+            self._publish_observed(deferred=self._busy or self._diagnostic_busy)
+            return
+        if self.context.lock.locked:
+            self._publish_observed(deferred=True)
+            return
+        if self._identify_worker is not None and self._identify_worker.isRunning():
+            return
+        free, _reason = port_is_free(device.port)
+        if not free:
+            self._publish_observed(deferred=True)
+            return
+        cancel = self._identify_cancel
+        expected = device.identity_key
+        platform, led = self._configured_assignment()
+
+        def job():
+            return probe_profile(
+                env=self.context.env,
+                device=device,
+                lock=self.context.lock,
+                port_free=port_is_free,
+                cancel=cancel,
+                device_count=len(self._devices),
+                configured_platform=platform,
+                led_order=led,
+                prefs_kind=self.context.prefs.detected_firmware_kind,
+                work_dir=self.context.shell.work_dir,
+            )
+
+        worker = IdentifyWorker(job)
+        worker.finished_profile.connect(lambda profile, expected=expected: self._on_profile(profile, expected))
+        self._identify_worker = worker
+        worker.start()
+
+    def _on_profile(self, profile, expected: str) -> None:
+        self._identify_worker = None
+        device = self._selected_device()
+        if profile is None or device is None or device.identity_key != expected:
+            return
+        if profile.identity_key != device.identity_key:
+            return
+        self._identify_cache.store(device.identity_key, self.context.env.commit, profile)
+        self._show_identification(profile)
+
+    def _on_diagnostic_report(self, report) -> None:
+        device = self._selected_device()
+        technical = getattr(report, "technical", "") or ""
+        if device is None or not technical.strip():
+            return
+        stamp = context_key(device)
+        reported = str(getattr(report, "context_key", ""))
+        if stamp and not reported.startswith(stamp + "|"):
+            return
+        platform, led = self._configured_assignment()
+        profile = identify(
+            IdentifyInput(
+                device=device,
+                device_count=len(self._devices),
+                client_text=technical,
+                client_exit=0,
+                expected_version=self.context.env.version,
+                configured_platform=platform,
+                led_order=led,
+                prefs_kind=self.context.prefs.detected_firmware_kind,
+                source="diagnostico",
+            )
+        )
+        if profile.identity_key != device.identity_key:
+            return
+        self._identify_cache.store(device.identity_key, self.context.env.commit, profile)
+        self._show_identification(profile)
+
+    def _show_identification(self, profile) -> None:
+        signature = (
+            profile.identity_key,
+            profile.confidence.value,
+            profile.model.value,
+            profile.family.value,
+            profile.reported_firmware,
+            profile.spi.value,
+            profile.reading_ok,
+            profile.stale,
+            profile.block_pipeline,
+            profile.active_deferred,
+            profile.source,
+        )
+        changed = signature != self._profile_signature
+        self._profile = profile
+        self._profile_signature = signature
+        self._update_identity_label()
+        if changed:
+            self._recompute()
+        else:
+            self._set_notice(device_notice(profile, self._current_assessment()))
+            self._update_actions()
+        self._maybe_default_filter(profile)
+
+    def _maybe_default_filter(self, profile) -> None:
+        if self._filter_touched or not profile.reading_ok:
+            return
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            return
+        if profile.confidence not in {
+            IdConfidence.CONFIRMADA,
+            IdConfidence.PROVAVEL,
+            IdConfidence.FAMILIA_CONHECIDA,
+        }:
+            return
+        if profile.source not in {"cliente", "diagnostico"}:
+            return
+        if self._filter_default_for == profile.identity_key:
+            return
+        if not any(item.overall == Verdict.COMPATIBLE for item in self._assessments.values()):
+            return
+        index = self.compatibility_filter.findData("compativeis")
+        if index < 0:
+            return
+        self._setting_filter = True
+        self.compatibility_filter.setCurrentIndex(index)
+        self._setting_filter = False
+        self._filter_default_for = profile.identity_key
+        self._refresh_modules()
+
+    def _recompute(self) -> None:
+        rules = self._ensure_rules()
+        self._assessments = evaluate_all(
+            self.context.modules,
+            self._profile,
+            rules,
+            spi_checkbox=bool(self.context.prefs.spi_flash_confirmada),
+        )
+        if hasattr(self, "module_table"):
+            self._refresh_modules()
+        self._set_notice(device_notice(self._profile, self._current_assessment()))
+        if hasattr(self, "apply_button"):
+            self._update_actions()
+
+    def _current_assessment(self):
+        module = self._selected_module() if hasattr(self, "module_table") else None
+        if module is None:
+            return None
+        return self._assessments.get(module.id)
+
+    def _observed_input(self, source: str) -> IdentifyInput:
+        device = self._selected_device() if hasattr(self, "device_combo") else None
+        platform, led = self._configured_assignment()
+        return IdentifyInput(
+            device=device,
+            device_count=len(self._devices),
+            expected_version=self.context.env.version,
+            configured_platform=platform,
+            led_order=led,
+            prefs_kind=self.context.prefs.detected_firmware_kind,
+            source=source,
+        )
+
+    def _configured_assignment(self) -> tuple[str, str]:
+        path = self.context.env.repo_root / "Makefile.platform"
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        except OSError:
+            text = ""
+        platform, led, _notes = read_make_assignments(text)
+        return platform, led
+
+    def _ensure_rules(self):
+        repo = str(self.context.env.repo_root)
+        if self._rules is not None and self._rules_repo == repo:
+            return self._rules
+        manual = ""
+        try:
+            from pm3manager.guide.catalog import load_reviewed
+
+            manual = load_reviewed().checkout_commit
+        except Exception:
+            manual = ""
+        self._rules = load_checkout_rules(
+            self.context.env.repo_root,
+            manual_commit=manual,
+            observed_commit="",
+            shallow=shallow_checkout(self.context.env.repo_root),
+        )
+        self._rules_repo = repo
+        return self._rules
+
+    def _update_identity_label(self) -> None:
+        if not hasattr(self, "device_identity"):
+            return
+        profile = self._profile
+        if profile is None:
+            self.device_identity.setText("Dispositivo: não identificado")
+            self.device_identity.setToolTip("")
+            return
+        self.device_identity.setText(profile.compact_label())
+        detail = [
+            f"Confiança: {profile.confidence.value}",
+            f"Família: {profile.family.value}",
+            f"Modelo: {profile.model.value}",
+            f"Firmware reportado: {profile.reported_firmware or 'não informado'}",
+            f"Plataforma configurada: {profile.configured_platform or 'não lida'}",
+            f"Suporte operacional: {profile.operational.value}",
+        ]
+        detail.extend(profile.evidence[:8])
+        self.device_identity.setToolTip("\n".join(detail))
+
+    def _set_notice(self, text: str) -> None:
+        if not hasattr(self, "fit_notice") or text == self._last_notice:
+            return
+        self._last_notice = text
+        self.fit_notice.setText(text)
+        self.fit_notice.setToolTip(text)
+        self.fit_notice.setVisible(bool(text))
+
+    def _stop_identification(self) -> None:
+        self._probe_timer.stop()
+        self._identify_cancel.set()
+        worker = self._identify_worker
+        if worker is not None and worker.isRunning():
+            worker.wait(4000)
+        self._identify_worker = None
+
     def closeEvent(self, event) -> None:  # noqa: N802 - API do Qt
         if self._busy:
             QMessageBox.warning(
@@ -1454,6 +1928,7 @@ class MainWindow(QMainWindow):
         if self._diagnostic_busy and hasattr(self, "diagnostics_panel"):
             self.diagnostics_panel.shutdown()
             self._diagnostic_busy = False
+        self._stop_identification()
         self._split_save.stop()
         self._persist_splits()
         if hasattr(self, "updates_panel"):

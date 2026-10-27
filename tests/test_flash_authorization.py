@@ -149,7 +149,8 @@ def test_uma_confirmacao_grava_so_a_operacao_e_depois_desliga(qapp, tmp_path, mo
     window, folder, _loaded = _window(qapp, tmp_path, monkeypatch, questions)
     calls = []
 
-    def fake_apply(selected, device, *, force_rebuild, flash_authorized, on_stage, on_log):
+    def fake_apply(selected, device, *, force_rebuild, flash_authorized, on_stage, on_log, profile=None):
+        assert profile is None
         calls.append(flash_authorized)
         on_stage("Gravação", "Gravando")
         return OperationResult(
@@ -241,7 +242,8 @@ def test_recompilar_nao_grava_e_nao_consome_a_autorizacao(qapp, tmp_path, monkey
     window, _folder, _loaded = _window(qapp, tmp_path, monkeypatch, [])
     compiled = []
 
-    def fake_recompile(selected, *, on_stage, on_log):
+    def fake_recompile(selected, *, on_stage, on_log, profile=None):
+        assert profile is None
         compiled.append(selected.id)
         return OperationResult(True, "OK100", Msg.COMPILE_OK, "compiled", stage="Compilação concluída")
 

@@ -1,6 +1,6 @@
 [project]
 name = "proxmark3-standalone-manager"
-version = "2.1.0"
+version = "2.2.0"
 description = "Desktop application that compiles and, only when explicitly authorized, flashes a Proxmark3 Standalone module through an existing ProxSpace installation. It can also report Iceman and ProxSpace updates, run a read-only hardware diagnosis, and show an offline Standalone module guide without applying them."
 readme = "README.md"
 requires-python = ">=3.11"

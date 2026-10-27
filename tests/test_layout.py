@@ -296,6 +296,29 @@ def test_atualizacoes_operacoes_e_estado_apos_redimensionar(qapp, isolated_data,
             assert any(label.text() == caption for label in window.findChildren(QLabel))
         assert window.updates_panel.iceman_summary.text().startswith("Iceman:")
         assert window.updates_panel.prox_summary.text().startswith("ProxSpace:")
+        long = "Exibindo resultado da última verificação. Novos commits disponíveis. " * 4
+        panel = window.updates_panel
+        panel.status_label.setText(long)
+        panel.iceman_summary.setText("Iceman: " + long)
+        panel.prox_summary.setText("ProxSpace: " + long)
+        panel._apply_height_cap()
+        for width, height in ((1280, 720), (1366, 768)):
+            _show(window, qapp, width, height)
+            compact = (
+                panel.status_label,
+                panel.iceman_summary,
+                panel.prox_summary,
+                panel.check_button,
+                panel.details_button,
+            )
+            assert all(item.isVisible() and item.width() > 40 and item.height() >= 16 for item in compact)
+            areas = [
+                _overlap_area(left, right)
+                for index, left in enumerate(compact)
+                for right in compact[index + 1 :]
+            ]
+            assert not any(areas), f"{width}x{height}: textos de Atualizações se sobrepõem"
+            assert panel.status_label.toolTip() == long
         assert window.updates_panel.check_button.isVisible()
         assert window.updates_panel.details_button.isVisible()
         assert window.updates_panel.changes_button.isVisible() is False

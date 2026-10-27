@@ -7,6 +7,15 @@ Those screens do not change the compile or flash rules on this page. They
 do not say "100% compatible", and a Makefile value is not reported as a
 part that was measured. See [diagnostics](diagnostics.md) and
 [module guide](module-guide.md).
+
+Version 2.2.0 adds a dynamic rating beside that catalog.
+The rating uses the connected device, the checkout rules, and whether this
+application can compile and flash that family. It does not replace
+`can_apply`. An uncertain catalog mode still needs the existing
+confirmation, and an SPI-required mode still needs the SPI checkbox, even
+when the hardware reading already shows SPI present. RDV4 and PM5 are not
+given the PM3GENERIC pipeline. See
+[automatic identification](device-compatibility.md).
 That LED setting selects the AT91SAM7S chip support in the Iceman makefiles.
 It does not mean the connected board is a Proxmark3 Easy.
 
@@ -32,13 +41,19 @@ A generic USB serial adapter is ignored. If the text mentions Proxmark but
 the VID/PID is unknown, confidence stays medium and flashing is refused.
 With more than one accepted device, choose it in the list.
 
-## RDV4
+## RDV4 and PM5
 
 An RDV4 can be recognized from `hw version` / `hw status` and the
 application will say so. Diagnosis and the client can still be used.
 Compilation of an RDV4 image is not implemented. Flashing the PM3GENERIC
-image onto an RDV4 is blocked (`E303`). Do not describe version 1 as RDV4
-flashing support.
+image onto an RDV4 is blocked (`E303`). Do not describe version 1 or
+version 2.2.0 as RDV4 flashing support. A USB string that says RDV4 is not
+enough.
+
+PM5 is a separate profile. On the Iceman v4.23346 sources checked for this
+tree, Standalone mode is compiled out for PM5. Version 2.2.0 reports that
+limit for the analyzed firmware. It does not claim the 41 PM3 modules run
+on PM5, and it does not flash a PM3 image to a PM5.
 
 ## Modules
 

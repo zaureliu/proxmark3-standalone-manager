@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import threading
 
-from PySide6.QtCore import QThread, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QSize, QThread, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -50,6 +50,47 @@ def _changelog_snippet(report: ProviderReport) -> str:
     if remote.commit_lines:
         return remote.commit_lines[0][:180]
     return ""
+
+
+class _OneLineLabel(QLabel):
+    """Uma linha elidida. O texto completo fica na dica; a altura não cresce."""
+
+    def __init__(self, text: str = "", parent=None) -> None:
+        super().__init__(text, parent)
+        self.setWordWrap(False)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        if text:
+            self.setToolTip(text)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, max(self.fontMetrics().height() + 2, 16))
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        return QSize(0, self.minimumSizeHint().height())
+
+    def setText(self, text: str) -> None:  # noqa: N802 - API do Qt
+        previous = self.text()
+        super().setText(text)
+        if self.toolTip() in {"", previous}:
+            self.setToolTip(text)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - API do Qt
+        painter = QPainter(self)
+        shown = self.fontMetrics().elidedText(
+            self.text(),
+            Qt.TextElideMode.ElideRight,
+            max(0, self.width() - 2),
+        )
+        self.style().drawItemText(
+            painter,
+            self.rect(),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            self.palette(),
+            self.isEnabled(),
+            shown,
+            self.foregroundRole(),
+        )
 
 
 class _UpdateThread(QThread):
@@ -157,17 +198,15 @@ class UpdatesPanel(QFrame):
         self.notice.setVisible(False)
         layout.addWidget(self.notice)
 
-        self.status_label = QLabel("Ainda não verificado.")
-        self.status_label.setWordWrap(True)
+        self.status_label = _OneLineLabel("Ainda não verificado.")
         self.status_label.setObjectName("muted")
         layout.addWidget(self.status_label)
 
         summary = QHBoxLayout()
         summary.setSpacing(12)
-        self.iceman_summary = QLabel("Iceman: —")
-        self.prox_summary = QLabel("ProxSpace: —")
+        self.iceman_summary = _OneLineLabel("Iceman: —")
+        self.prox_summary = _OneLineLabel("ProxSpace: —")
         for label in (self.iceman_summary, self.prox_summary):
-            label.setWordWrap(True)
             label.setObjectName("value")
             label.setTextFormat(Qt.TextFormat.PlainText)
             summary.addWidget(label, 1)

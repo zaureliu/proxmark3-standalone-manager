@@ -8,11 +8,76 @@ from pm3manager.models import IdentityReport
 from pm3manager.textutil import strip_ansi
 
 _BANNER_PREFIX = re.compile(r"^\s*(?:\[#\]\s*)+")
+_TARGET_LINE = re.compile(r"(?i)target\.{4,}\s*([^\r\n]+)")
 _MCU = re.compile(r"uC:\s*([A-Za-z0-9]+)")
 _MCU_SIZE = re.compile(r"Embedded flash memory\s+(\d+K bytes)", re.IGNORECASE)
 _FLASH_SIZE = re.compile(r"Memory size\.+\s*(\d+)\s*Kb", re.IGNORECASE)
 _SMARTCARD = re.compile(r"Smartcard reader\.+\s*([A-Za-z]+)", re.IGNORECASE)
 _BT_ADDON = re.compile(r"FPC USART for BT add-on\.+\s*([A-Za-z]+)", re.IGNORECASE)
+
+
+def _target_labels(text: str) -> list[str]:
+    labels: list[str] = []
+    for match in _TARGET_LINE.finditer(text or ""):
+        label = re.sub(r"\s+", " ", match.group(1)).strip()
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _target_kind(label: str) -> str:
+    """Uma linha Target do cliente. GENERIC exato não é PM3 GENERIC."""
+    cleaned = label.strip().lower()
+    if "mismatch" in cleaned:
+        return "conflito"
+    if cleaned == "pm5":
+        return "PM5"
+    if cleaned == "rdv4":
+        return "RDV4"
+    if cleaned in {"pm3 generic", "pm3generic"}:
+        return "PM3 GENERIC"
+    if cleaned == "generic":
+        return "GENERIC"
+    return ""
+
+
+def model_signals(text: str) -> set[str]:
+    """Sinais de modelo. Não promove preferência, VID nem LED_ORDER."""
+    lowered = (text or "").lower()
+    found: set[str] = set()
+    for label in _target_labels(text or ""):
+        kind = _target_kind(label)
+        if kind:
+            found.add(kind)
+    if "firmware.................. rdv4" in lowered or "device.................... rdv4" in lowered:
+        found.add("RDV4")
+    if "pm3 generic" in lowered:
+        found.add("PM3 GENERIC")
+    if "pm3generic firmware on a rdv4" in lowered or "pm3_rdv4 firmware on a generic" in lowered:
+        found.add("conflito")
+    return found
+
+
+def _firmware_kind(text: str) -> str:
+    found = model_signals(text)
+    concrete = {item for item in found if item != "conflito"}
+    lowered = (text or "").lower()
+    banner_pm5 = "proxmark5" in lowered
+    banner_pm3 = "proxmark3" in lowered
+    if "conflito" in found or len(concrete) > 1:
+        return "conflito"
+    if len(concrete) == 1:
+        kind = next(iter(concrete))
+        if banner_pm5 and kind != "PM5":
+            return "conflito"
+        return kind
+    if banner_pm5 and banner_pm3:
+        return "conflito"
+    if banner_pm5:
+        return "PM5"
+    if banner_pm3:
+        return "Proxmark3"
+    return "desconhecido"
 
 
 def parse_identity(output: str, *, exit_code: int, expected_version: str) -> IdentityReport:
@@ -28,7 +93,8 @@ def parse_identity(output: str, *, exit_code: int, expected_version: str) -> Ide
             "cannot communicate",
         )
     )
-    if not text.strip() or ("[ proxmark3 ]" not in lowered and "client" not in lowered and missing):
+    has_banner = "[ proxmark3 ]" in lowered or "[ proxmark5 ]" in lowered or "client" in lowered
+    if not text.strip() or (not has_banner and missing):
         return IdentityReport(
             communication_ok=False,
             version_mismatch=False,
@@ -38,14 +104,9 @@ def parse_identity(output: str, *, exit_code: int, expected_version: str) -> Ide
             raw=text,
         )
     mismatch = "does not match" in lowered or "não corresponde" in lowered
-    if "firmware.................. rdv4" in lowered or "device.................... rdv4" in lowered:
-        kind = "RDV4"
-    elif "pm3 generic" in lowered or "target.... generic" in lowered:
-        kind = "PM3 GENERIC"
-    elif "proxmark3" in lowered and not missing:
+    kind = _firmware_kind(text)
+    if kind == "desconhecido" and "proxmark3" in lowered and not missing:
         kind = "Proxmark3"
-    else:
-        kind = "desconhecido"
     if "external flash............ present" in lowered or "external flash............ presente" in lowered:
         flash = "presente"
     elif "external flash............ absent" in lowered or "external flash............ ausente" in lowered:
