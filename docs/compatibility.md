@@ -8,7 +8,7 @@ do not say "100% compatible", and a Makefile value is not reported as a
 part that was measured. See [diagnostics](diagnostics.md) and
 [module guide](module-guide.md).
 
-Version 2.2.0, in development, adds a dynamic rating beside that catalog.
+Version 2.2.0 adds a dynamic rating beside that catalog.
 The rating uses the connected device, the checkout rules, and whether this
 application can compile and flash that family. It does not replace
 `can_apply`. An uncertain catalog mode still needs the existing

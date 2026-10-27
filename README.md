@@ -8,17 +8,16 @@ The window is in Brazilian Portuguese. This repository is the manager. It
 is not the Proxmark firmware, it is not ProxSpace, and it is not an official
 RfidResearchGroup product.
 
-Version 2.1.0 is the source published on `main`. The annotated tag
-`v2.1.0` identifies that publication. The tags `v1.0.0` and `v2.0.0`
-stay where they are. There is no GitHub Release for 2.1.0, and the
-binary package stays `PUBLICATION: BLOCKED`.
+Version 2.2.0 is the source published on `main`. The annotated tag
+`v2.2.0` identifies that publication. The tags `v1.0.0`, `v2.0.0`, and
+`v2.1.0` stay where they are. There is no GitHub Release for 2.2.0, and
+the binary package stays `PUBLICATION: BLOCKED`.
 
-Version 2.2.0 is in development in this tree. It is not tagged, not
-merged, and not published. It identifies a connected Proxmark and rates
-each Standalone module against that reading, the selected Iceman checkout,
-and the pipeline this application has actually validated. Compilation and
-flashing stay explicit. RDV4 and PM5 stay consultive: this application
-still does not flash them. See
+Version 2.2.0 identifies a connected Proxmark and rates each Standalone
+module against that reading, the selected Iceman checkout, and the
+pipeline this application has actually validated. Compilation and flashing
+stay explicit. RDV4 and PM5 stay consultive: this application still does
+not flash them. See
 [Automatic identification](docs/device-compatibility.md).
 
 Source: https://github.com/zaureliu/proxmark3-standalone-manager

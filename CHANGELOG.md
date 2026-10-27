@@ -1,13 +1,12 @@
 # Changelog
 
 The version number in `pm3manager/__init__.py` and `pyproject.toml` is 2.2.0.
-Version 2.2.0 is in development. It is not the source published on `main`.
-The annotated tag `v2.1.0` still identifies the published 2.1.0 source.
-This change does not move `v1.0.0`, `v2.0.0`, or `v2.1.0`, and it does not
-create a `v2.2.0` tag or a GitHub Release. The binary package stays
-`PUBLICATION: BLOCKED`.
+Version 2.2.0 is the source published on `main`. The annotated tag
+`v2.2.0` identifies that publication. This change does not move `v1.0.0`,
+`v2.0.0`, or `v2.1.0`, and it does not create a GitHub Release. The binary
+package stays `PUBLICATION: BLOCKED`.
 
-## 2.2.0 — in development
+## 2.2.0 — source published
 
 Source Code Only is unchanged. There is no GitHub Release and no binary
 attachment.
@@ -40,7 +39,6 @@ attachment.
 ### Not in this version
 
 - No RDV4 image and no PM5 image. No PM3 firmware is sent to a PM5.
-- No tag, no merge, and no publication.
 
 ## 2.1.0 — source published
 

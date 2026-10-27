@@ -1,11 +1,13 @@
 # Automatic identification and dynamic compatibility
 
-Version 2.2.0, in development, adds two consultive layers on top of the
-V2.1 protections. Neither layer starts a build or a flash. Neither layer
-rewrites `PLATFORM`, `PLATFORM_EXTRAS`, `LED_ORDER`, or `STANDALONE`.
+Version 2.2.0 adds two consultive layers on top of the V2.1 protections.
+Neither layer starts a build or a flash. Neither layer rewrites
+`PLATFORM`, `PLATFORM_EXTRAS`, `LED_ORDER`, or `STANDALONE`.
 
-Published `main` remains 2.1.0. This document describes the unpublished
-2.2.0 tree. There is no `v2.2.0` tag and no GitHub Release.
+Version 2.2.0 is the source published on `main`. The annotated tag
+`v2.2.0` identifies that publication. The tags `v1.0.0`, `v2.0.0`, and
+`v2.1.0` stay where they are. There is no GitHub Release. The binary
+package stays `PUBLICATION: BLOCKED`.
 
 ## What is identified
 
