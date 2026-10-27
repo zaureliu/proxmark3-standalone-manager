@@ -13,7 +13,10 @@ a = Analysis(
     [str(root / "pm3manager" / "__main__.py")],
     pathex=[str(root)],
     binaries=[],
-    datas=[(str(root / "assets" / "icon.ico"), "assets")],
+    datas=[
+        (str(root / "assets" / "icon.ico"), "assets"),
+        (str(root / "pm3manager" / "guide" / "data" / "reviewed.json"), "pm3manager/guide/data"),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

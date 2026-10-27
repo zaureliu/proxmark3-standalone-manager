@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextBrowser,
     QTextEdit,
     QVBoxLayout,
@@ -44,6 +45,8 @@ from pm3manager.modules.catalog import can_apply, filter_modules
 from pm3manager.paths import resource_path
 from pm3manager.client.launcher import launch_client
 from pm3manager.logging_setup import environment_name, latest_log_file, setup_logging
+from pm3manager.ui.diagnostics_panel import DiagnosticsPanel
+from pm3manager.ui.guide_panel import GuidePanel
 from pm3manager.ui.presentation import present_result
 from pm3manager.ui.theme import LOG_KIND_COLORS, STATUS_COLORS, STYLESHEET
 from pm3manager.ui.updates_panel import UpdatesPanel
@@ -265,6 +268,7 @@ class MainWindow(QMainWindow):
         )
         self._devices: list[Device] = []
         self._busy = False
+        self._diagnostic_busy = False
         self._consume_authorization = False
         self._worker: ServiceWorker | None = None
         self._elapsed = QElapsedTimer()
@@ -348,7 +352,25 @@ class MainWindow(QMainWindow):
             self._main_split.setCollapsible(index, False)
         self._main_split.splitterMoved.connect(self._schedule_split_save)
         self._top_split.splitterMoved.connect(self._schedule_split_save)
-        root.addWidget(self._main_split, 1)
+        operations = QWidget()
+        operations_layout = QVBoxLayout(operations)
+        operations_layout.setContentsMargins(0, 8, 0, 0)
+        operations_layout.addWidget(self._main_split)
+        self._pages = QTabWidget()
+        self._pages.setObjectName("sectionTabs")
+        self._pages.setDocumentMode(True)
+        self._pages.addTab(operations, "Operações")
+        self.diagnostics_panel = DiagnosticsPanel(
+            self.context,
+            self._selected_device,
+            self._selected_module,
+            self._diagnostic_blocked,
+            self._set_diagnostic_busy,
+        )
+        self.guide_panel = GuidePanel(self.context.modules)
+        self._pages.addTab(self.diagnostics_panel, "Diagnóstico")
+        self._pages.addTab(self.guide_panel, "Manual")
+        root.addWidget(self._pages, 1)
 
     def _card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame()
@@ -497,6 +519,10 @@ class MainWindow(QMainWindow):
         header.sectionResized.connect(self._module_column_resized)
         self.module_table.itemSelectionChanged.connect(self._module_changed)
         layout.addWidget(self.module_table, 1)
+        self.manual_button = QPushButton("Ver manual do módulo")
+        self.manual_button.setMinimumHeight(self._comfortable_height(self.manual_button))
+        self.manual_button.clicked.connect(self._open_module_manual)
+        layout.addWidget(self.manual_button)
         return frame
 
     def _operation_card(self) -> QFrame:
@@ -669,7 +695,7 @@ class MainWindow(QMainWindow):
             self.device_combo.setCurrentIndex(chosen)
         self.device_combo.blockSignals(False)
         self._show_device(self._selected_device(), announce=not self._busy)
-        if not self._busy:
+        if not self._busy and not self._diagnostic_busy:
             if not devices:
                 self.set_status("Desconectado")
             elif self._selected_device() and self._selected_device().confidence == Confidence.HIGH:
@@ -693,6 +719,8 @@ class MainWindow(QMainWindow):
             self.context.prefs.selected_serial = device.identity_key
         self.context.prefs.save()
         self._show_device(device, announce=True)
+        if hasattr(self, "diagnostics_panel"):
+            self.diagnostics_panel.mark_context()
 
     def _show_device(self, device: Device | None, announce: bool) -> None:
         if device is None:
@@ -865,6 +893,8 @@ class MainWindow(QMainWindow):
         self.confirm_uncertain.blockSignals(False)
         self._refresh_config_text()
         self._update_actions()
+        if hasattr(self, "diagnostics_panel"):
+            self.diagnostics_panel.mark_context()
 
     def _update_actions(self) -> None:
         module = self._selected_module()
@@ -888,16 +918,19 @@ class MainWindow(QMainWindow):
         else:
             notice = "Gravação desligada. Aplicar módulo apenas compila."
         self.block_reason.setText(notice)
-        self.authorize_check.setEnabled(not self._busy)
-        self.apply_button.setEnabled((not self._busy) and allowed and not hardware_block)
-        self.rebuild_button.setEnabled((not self._busy) and allowed)
+        occupied = self._busy or self._diagnostic_busy
+        self.authorize_check.setEnabled(not occupied)
+        self.apply_button.setEnabled((not occupied) and allowed and not hardware_block)
+        self.rebuild_button.setEnabled((not occupied) and allowed)
         if hasattr(self, "proxspace_button"):
-            self.proxspace_button.setEnabled(not self._busy)
-            self.repo_combo.setEnabled(not self._busy)
+            self.proxspace_button.setEnabled(not occupied)
+            self.repo_combo.setEnabled(not occupied)
         high = device is not None and device.confidence == Confidence.HIGH
-        self.verify_button.setEnabled((not self._busy) and high)
-        self.client_button.setEnabled((not self._busy) and high)
+        self.verify_button.setEnabled((not occupied) and high)
+        self.client_button.setEnabled((not occupied) and high)
         self.logs_button.setEnabled(True)
+        if hasattr(self, "manual_button"):
+            self.manual_button.setEnabled(module is not None)
 
     def _subtitle_text(self) -> str:
         return f"Versão {__version__}  ·  firmware {self.context.env.version}"
@@ -938,8 +971,27 @@ class MainWindow(QMainWindow):
         self.context.prefs.save()
         self._reload_context()
 
-    def _reload_context(self) -> None:
+    def _diagnostic_blocked(self) -> bool:
         if self._busy:
+            return True
+        lock = self.context.lock
+        return bool(lock.locked and lock.owner != "diagnostics")
+
+    def _set_diagnostic_busy(self, running: bool) -> None:
+        self._diagnostic_busy = running
+        if running:
+            self.set_status("Diagnosticando")
+        self._update_actions()
+
+    def _open_module_manual(self) -> None:
+        module = self._selected_module()
+        if module is None or not hasattr(self, "guide_panel"):
+            return
+        self.guide_panel.show_module(module.id)
+        self._pages.setCurrentWidget(self.guide_panel)
+
+    def _reload_context(self) -> None:
+        if self._busy or self._diagnostic_busy:
             return
         try:
             fresh = AppContext.load()
@@ -972,6 +1024,10 @@ class MainWindow(QMainWindow):
         self.summary_label.setText(f"ProxSpace em uso: {fresh.env.proxspace_root}")
         if hasattr(self, "updates_panel"):
             self.updates_panel.rebind(fresh)
+        if hasattr(self, "diagnostics_panel"):
+            self.diagnostics_panel.rebind(fresh)
+        if hasattr(self, "guide_panel"):
+            self.guide_panel.set_modules(fresh.modules)
 
     def _spi_toggled(self, checked: bool) -> None:
         self.context.prefs.spi_flash_confirmada = checked
@@ -1395,6 +1451,9 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        if self._diagnostic_busy and hasattr(self, "diagnostics_panel"):
+            self.diagnostics_panel.shutdown()
+            self._diagnostic_busy = False
         self._split_save.stop()
         self._persist_splits()
         if hasattr(self, "updates_panel"):
