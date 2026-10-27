@@ -13,7 +13,7 @@ from pm3manager.paths import project_root
 
 
 def test_importa_os_modulos_principais():
-    assert pm3manager.__version__ == "2.0.0"
+    assert pm3manager.__version__ == "2.1.0"
     assert callable(pm3manager.app.self_check)
     assert pm3manager.preferences.Preferences().flash_autorizado is False
     assert pm3manager.workflow.service.ManagerService

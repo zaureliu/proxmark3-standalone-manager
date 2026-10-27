@@ -8,7 +8,10 @@ The window is in Brazilian Portuguese. This repository is the manager. It
 is not the Proxmark firmware, it is not ProxSpace, and it is not an official
 RfidResearchGroup product.
 
-Version 2.0.0.
+Version 2.1.0 is the source published on `main`. The annotated tag
+`v2.1.0` identifies that publication. The tags `v1.0.0` and `v2.0.0`
+stay where they are. There is no GitHub Release for 2.1.0, and the
+binary package stays `PUBLICATION: BLOCKED`.
 
 Source: https://github.com/zaureliu/proxmark3-standalone-manager
 
@@ -68,6 +71,12 @@ This repository does not supply that permission for Qt or PySide6.
 - Keeps **Aplicar módulo**, **Recompilar**, **Verificar dispositivo**,
   **Abrir cliente Proxmark3**, and **Visualizar logs** outside any scroll
   area. The module description scrolls on its own.
+- Adds a **Diagnóstico** tab. It reads USB identity and, only on request,
+  `hw version`, `hw status`, and `hw ping`. It does not compile, flash, or
+  change the Makefile. See [Diagnostics](docs/diagnostics.md).
+- Adds an offline **Manual** for the 41 Standalone modules in the v4.23346
+  catalog, opened with **Ver manual do módulo**. Unknown fields stay
+  unknown. See [Module guide](docs/module-guide.md).
 
 Compiling without flashing is a normal, supported action.
 
@@ -201,7 +210,7 @@ keys, dumps, or identifiers from that test.
 
 ## Update monitor
 
-Version 2.0.0 watches the official Iceman and ProxSpace GitHub repositories.
+The application watches the official Iceman and ProxSpace GitHub repositories.
 The compact **Atualizações** panel shows a notice and a short summary.
 **Ver detalhes** opens a separate dialog. **Configurações** is in that
 dialog, not on the compact strip. The monitor does not install updates, does
@@ -227,6 +236,8 @@ and it does not publish an executable.
 
 - [Installation](docs/install.md)
 - [Compatibility](docs/compatibility.md)
+- [Diagnostics](docs/diagnostics.md)
+- [Standalone module guide](docs/module-guide.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Update monitor](docs/updates.md)
 - [Licensing](docs/licensing.md)

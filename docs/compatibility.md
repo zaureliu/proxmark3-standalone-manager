@@ -2,6 +2,11 @@
 
 Version 2.0.0 compiles one platform: `PM3GENERIC`, with `LED_ORDER=PM3EASY`.
 That is the same image rule as 1.0.0. The update monitor does not change it.
+Version 2.1.0 adds a consultive diagnosis and an offline module guide.
+Those screens do not change the compile or flash rules on this page. They
+do not say "100% compatible", and a Makefile value is not reported as a
+part that was measured. See [diagnostics](diagnostics.md) and
+[module guide](module-guide.md).
 That LED setting selects the AT91SAM7S chip support in the Iceman makefiles.
 It does not mean the connected board is a Proxmark3 Easy.
 

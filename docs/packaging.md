@@ -16,11 +16,11 @@ runtime libraries.
 
 ## Version
 
-The version is `pm3manager.__version__`, currently `2.0.0`, and the same
+The version is `pm3manager.__version__`, currently `2.1.0`, and the same
 value in `pyproject.toml`. `scripts\build_exe.ps1` prints it before
 PyInstaller runs. Change both places together. The executable name stays
 `Proxmark3StandaloneManager.exe`. The zip name includes the version:
-`Proxmark3StandaloneManager-v2.0.0-windows-x64.zip`.
+`Proxmark3StandaloneManager-v2.1.0-windows-x64.zip`.
 
 The blocked validation zip from version 1.0.0, when it is still on disk, is
 `Proxmark3StandaloneManager-v1.0.0-windows-x64.zip`. The update monitor does
@@ -53,7 +53,7 @@ After staging, the same folder also contains `LICENSE`,
 `SHA256SUMS.txt`. The zip is created beside the folder, not inside it:
 
 ```text
-dist\Proxmark3StandaloneManager-v2.0.0-windows-x64.zip
+dist\Proxmark3StandaloneManager-v2.1.0-windows-x64.zip
 dist\SHA256SUMS.txt
 ```
 

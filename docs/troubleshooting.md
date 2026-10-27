@@ -34,6 +34,26 @@ the preferences and returns without flashing.
 `OK200` is reserved for a laboratory proof the application itself does not
 perform. You should not see it from the current buttons.
 
+## Diagnostics
+
+The **Diagnóstico** tab is consultive. **Desconectado** means no Proxmark3
+was selected for that reading. It does not mean the device is defective.
+**Porta COM ocupada** means another program already has the port. Close
+that program. The diagnosis does not force the port open. A missing
+bootrom line or an unnamed firmware family stays unverified. It is not an
+automatic incompatibility. If a compile or a flash is running, the
+diagnosis refuses to start and does not cancel that operation.
+
+The exported report redacts home-directory paths, e-mail addresses, tokens,
+USB serial numbers, processor unique IDs, flash unique IDs, and lines that
+look like a card UID or a dump. It is not a certificate. A version suffix
+`-suspect` is not treated as a proved cause, and the diagnosis does not
+flash the device to remove it. See [diagnostics](diagnostics.md).
+
+**Ver manual do módulo** only opens the offline card. If a module from a
+newer checkout has no reviewed card, the manual says **Sem revisão**
+instead of inventing LEDs or buttons. See [module guide](module-guide.md).
+
 ## Update monitor
 
 **Não foi possível consultar o GitHub.** means the live request failed.
