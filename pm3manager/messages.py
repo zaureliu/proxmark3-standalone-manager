@@ -49,6 +49,21 @@ class Msg:
     FLASH_RDV4_BLOCKED = (
         "Gravação bloqueada. O dispositivo foi identificado como RDV4 e esta imagem é PM3GENERIC."
     )
+    RDV4_PIPELINE_BLOCKED = (
+        "Compilação e gravação bloqueadas. O dispositivo foi identificado como RDV4 e esta imagem é PM3GENERIC. "
+        "A leitura continua disponível; este aplicativo não compila nem grava para RDV4."
+    )
+    FLASH_PM5_BLOCKED = (
+        "Compilação e gravação bloqueadas. O dispositivo foi identificado como Proxmark5. "
+        "Este aplicativo não envia firmware PM3 para esse aparelho e não tem pipeline PM5."
+    )
+    FLASH_IDENTITY_BLOCKED = (
+        "Compilação e gravação bloqueadas. A identificação do firmware é inconclusiva ou conflitante, "
+        "então a imagem PM3GENERIC não será aplicada."
+    )
+    IDENTIFYING = (
+        "A identificação do dispositivo está em andamento. Compilação e gravação esperam ela terminar."
+    )
     FLASH_SIZE_BLOCKED = (
         "Gravação bloqueada. O tamanho da flash interna não confere com PLATFORM_SIZE da imagem."
     )

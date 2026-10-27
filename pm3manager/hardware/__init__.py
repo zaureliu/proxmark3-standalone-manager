@@ -1,1 +1,1 @@
-"""Detecção USB/COM e leitura da identificação do cliente Proxmark3."""
+"""Detecção USB/COM, leitura do cliente e perfil de hardware."""
