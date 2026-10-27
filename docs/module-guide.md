@@ -59,6 +59,14 @@ unverified information. RDV4 and SPI filters follow the Makefile marks
 (`RDV4 only`, `_RDV4`, `STANDALONE_MODES_REQ_FLASH`). They are not a
 measurement of the connected board.
 
+On the v4.23346 checkout those marks are not the same set as the catalog
+class. `STANDALONE_MODES_REQ_FLASH` lists 11 modes, and the guide filter
+"Requer flash SPI" follows that list. Ten of them are already incompatible
+with this application's PM3GENERIC build, mostly because `Makefile.hal`
+marks them RDV4-only. The catalog class "Requer flash SPI" stays at one
+mode, HF_ST25_TEAROFF: flash is required and the mode is not already
+rejected for another reason. The guide does not change that class.
+
 **Abrir referência** opens only `https://github.com/RfidResearchGroup/proxmark3`
 URLs that the application already allows: the repository root, the
 Standalone wiki page, or a `blob`/`tree` URL pinned to a 40-character
