@@ -55,6 +55,7 @@ class DiagnosticsPanel(QWidget):
         module_provider: Callable[[], Module | None],
         blocked: Callable[[], bool],
         on_busy: Callable[[bool], None],
+        on_report: Callable[[DiagnosticReport], None] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -62,6 +63,7 @@ class DiagnosticsPanel(QWidget):
         self._module = module_provider
         self._blocked = blocked
         self._on_busy = on_busy
+        self._on_report = on_report
         self._report: DiagnosticReport | None = None
         self._worker: _DiagnosticWorker | None = None
         self.service = DiagnosticService(context.lock, live_collect(context, device_provider, module_provider, context.shell.work_dir))
@@ -177,6 +179,8 @@ class DiagnosticsPanel(QWidget):
         self.status.setText(report.summary)
         self._fill(report)
         self.mark_context()
+        if self._on_report is not None:
+            self._on_report(report)
         enabled = True
         self.copy_button.setEnabled(enabled)
         self.export_button.setEnabled(enabled)
